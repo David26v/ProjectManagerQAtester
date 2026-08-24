@@ -67,6 +67,37 @@ test('createRecorder: password fields record "********" literally, never the rea
   assert.equal(passwordStep.name, 'Input password');
 });
 
+test('createRecorder: a mid-typing pause > 500ms does not emit a partial fill (flush only on blur/Enter)', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const recorder = createRecorder();
+  await recorder.start({ url: fixture.url });
+  t.after(async () => {
+    if (recorder.isRunning()) await recorder.stop();
+  });
+
+  const page = recorder._page;
+  const email = page.locator('#email');
+  await email.click();
+  await email.type('ab');
+
+  // Pause well past the old 500ms debounce window before continuing to
+  // type. A timer-based flush would have fired here and recorded a
+  // premature `fill` with the partial value "ab".
+  await page.waitForTimeout(700);
+
+  await email.type('c@d.e');
+  await page.click('#signin');
+  await page.waitForTimeout(300);
+
+  const steps = await recorder.stop();
+  const fillSteps = steps.filter((s) => s.type === 'fill' && s.selector === '#email');
+
+  assert.equal(fillSteps.length, 1, 'expected exactly one fill step for #email despite the mid-typing pause');
+  assert.equal(fillSteps[0].value, 'abc@d.e');
+});
+
 test('session.start: capturing a login session resolves storageState JSON on finish()', async (t) => {
   const fixture = await startFixtureServer();
   t.after(() => fixture.close());

@@ -14,23 +14,36 @@ function qaflowRecorderInit() {
   if (window.__qaflowRecorderInstalled) return;
   window.__qaflowRecorderInstalled = true;
 
-  const FLUSH_DEBOUNCE_MS = 500;
-  const pendingFills = new Map(); // element -> { value, timer }
+  // element -> { value } — the latest typed value for a field that hasn't
+  // been flushed yet. There is no independent timer here: a `fill` step is
+  // emitted exactly once, on blur or Enter, with whatever the final value
+  // was at that point. (An earlier version also flushed on a 500ms
+  // inactivity timer, which could emit a stale partial-value `fill` if the
+  // user paused mid-typing, followed by a second `fill` on blur — that's
+  // exactly the duplicate/stale-value bug this comment is warning future
+  // edits away from reintroducing.)
+  const pendingFills = new Map();
 
   function cssEscape(value) {
     return String(value).replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
+  }
+
+  // For use inside a quoted attribute-value selector, e.g. `[name="..."]` —
+  // only backslashes and double quotes need escaping there.
+  function escapeAttrValue(value) {
+    return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 
   function selectorFor(el) {
     if (!el || el.nodeType !== 1) return '';
 
     const testId = el.getAttribute && el.getAttribute('data-testid');
-    if (testId) return `[data-testid="${testId}"]`;
+    if (testId) return `[data-testid="${escapeAttrValue(testId)}"]`;
 
     if (el.id) return `#${cssEscape(el.id)}`;
 
     const name = el.getAttribute && el.getAttribute('name');
-    if (name) return `[name="${name}"]`;
+    if (name) return `[name="${escapeAttrValue(name)}"]`;
 
     const tag = el.tagName.toLowerCase();
     if (tag === 'a' || tag === 'button') {
@@ -56,14 +69,18 @@ function qaflowRecorderInit() {
     return el && el.tagName === 'INPUT' && (el.getAttribute('type') || '').toLowerCase() === 'password';
   }
 
-  function flushFill(el) {
+  // Emits one `fill` for the field's current pending value, then clears it.
+  // `window.__qaflowRecord` is an exposeBinding call, so it returns a
+  // promise that resolves once the Node-side handler has processed it —
+  // await it so callers (e.g. the stop/close flush below) can be sure the
+  // step actually landed before they close the browser.
+  async function flushFill(el) {
+    if (!pendingFills.has(el)) return;
     const entry = pendingFills.get(el);
-    if (!entry) return;
-    clearTimeout(entry.timer);
     pendingFills.delete(el);
 
     const password = isPasswordField(el);
-    window.__qaflowRecord({
+    await window.__qaflowRecord({
       type: 'fill',
       selector: selectorFor(el),
       value: password ? '********' : entry.value,
@@ -71,6 +88,23 @@ function qaflowRecorderInit() {
       tagName: el.tagName,
     });
   }
+
+  // Safety net for fields the user never blurred and never pressed Enter in
+  // (e.g. they closed the recorder mid-typing). Only called at recorder
+  // stop / page close — never on a mid-typing timer.
+  async function flushAllPending() {
+    const elements = Array.from(pendingFills.keys());
+    for (const el of elements) {
+      await flushFill(el);
+    }
+  }
+  window.__qaflowFlushPending = flushAllPending;
+  window.addEventListener('beforeunload', () => {
+    // Best-effort only — browsers do not guarantee async work completes
+    // during beforeunload. `recorder.js`'s explicit stop() flush is the
+    // reliable path; this just catches the "user closed the window" case.
+    flushAllPending();
+  });
 
   document.addEventListener(
     'click',
@@ -96,10 +130,9 @@ function qaflowRecorderInit() {
       const tag = el.tagName.toLowerCase();
       if (tag !== 'input' && tag !== 'textarea') return;
 
-      const existing = pendingFills.get(el);
-      if (existing) clearTimeout(existing.timer);
-      const timer = setTimeout(() => flushFill(el), FLUSH_DEBOUNCE_MS);
-      pendingFills.set(el, { value: el.value, timer });
+      // Just remember the latest value — flushed exclusively on blur/Enter
+      // below, never on an inactivity timer.
+      pendingFills.set(el, { value: el.value });
     },
     true
   );

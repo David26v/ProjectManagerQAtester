@@ -21,13 +21,15 @@ function clickStepName(payload) {
 }
 
 function stepFromPayload(payload) {
+  // Steps only carry the keys the Shared Data Model defines for their type
+  // (e.g. `selector` is omitted for goto/press, `value` for click) — never
+  // present-but-undefined.
   switch (payload.type) {
     case 'click':
       return {
         type: 'click',
         name: clickStepName(payload),
         selector: payload.selector,
-        value: undefined,
         timeout: 10000,
       };
     case 'fill': {
@@ -52,7 +54,6 @@ function stepFromPayload(payload) {
       return {
         type: 'press',
         name: `Press ${payload.value}`,
-        selector: undefined,
         value: payload.value,
         timeout: 10000,
       };
@@ -118,6 +119,21 @@ function createRecorder() {
 
   async function stop() {
     running = false;
+
+    // Safety net for a field the user was mid-typing in and never blurred:
+    // flush it now, at stop, rather than on any mid-typing timer. Best
+    // effort — the page may already be gone if the user closed the window.
+    if (page && !page.isClosed()) {
+      try {
+        await page.evaluate(() => {
+          if (window.__qaflowFlushPending) return window.__qaflowFlushPending();
+          return undefined;
+        });
+      } catch {
+        // Page/context already torn down — nothing to flush.
+      }
+    }
+
     if (browser) {
       try {
         await browser.close();
