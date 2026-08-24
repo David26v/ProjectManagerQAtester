@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>QA Flow Fixture Login</title>
+</head>
+<body>
+  <h1>Sign in</h1>
+  <input id="email" type="text" placeholder="Email" />
+  <input id="password" type="password" placeholder="Password" />
+  <button id="signin">Sign in</button>
+  <div id="error" style="display: none">Email is required</div>
+  <button id="boom">Boom</button>
+
+  <script>
+    document.getElementById('signin').addEventListener('click', () => {
+      const email = document.getElementById('email').value;
+      if (email) {
+        window.location = 'dashboard.html';
+      } else {
+        document.getElementById('error').style.display = 'block';
+      }
+    });
+
+    document.getElementById('boom').addEventListener('click', () => {
+      console.error('boom');
+    });
+  </script>
+</body>
+</html>
