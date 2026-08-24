@@ -1,0 +1,20 @@
+{
+  "name": "qa-flow",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/**/*.test.js",
+    "smoke": "electron . --smoke"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0",
+    "exceljs": "^4.4.0",
+    "archiver": "^7.0.1",
+    "express": "^4.21.1"
+  },
+  "devDependencies": {
+    "electron": "^32.2.0"
+  }
+}
