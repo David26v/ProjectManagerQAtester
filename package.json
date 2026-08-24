@@ -9,12 +9,13 @@
     "smoke": "electron . --smoke"
   },
   "dependencies": {
-    "playwright": "^1.48.0",
-    "exceljs": "^4.4.0",
     "archiver": "^7.0.1",
-    "express": "^4.21.1"
+    "exceljs": "^4.4.0",
+    "express": "^4.21.1",
+    "playwright": "^1.48.0"
   },
   "devDependencies": {
+    "adm-zip": "^0.6.0",
     "electron": "^32.2.0"
   }
 }
