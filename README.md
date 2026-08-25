@@ -31,6 +31,13 @@ npm test
 Tests run against a temp directory via `node --test` and never touch the
 app's real `qaflow-data/` storage.
 
+## Documentation
+
+- [User Guide](docs/USER_GUIDE.md) — the Connect → Record → Save → Run →
+  Review → Report loop, screen by screen, plus CLI/API automation.
+- [Architecture](docs/ARCHITECTURE.md) — engine / main / renderer layering,
+  IPC surface, data layout, and the fixed run-report contract.
+
 ## Status
 
 v1 feature-complete. All ten build tasks landed:
