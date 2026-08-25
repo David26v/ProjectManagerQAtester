@@ -40,7 +40,8 @@ function decryptCredential(store, credentialProfileId) {
   if (!meta) throw new Error(`Credential profile "${credentialProfileId}" not found`);
   const blob = store.readCredentialBlob(credentialProfileId);
   if (!blob) throw new Error(`Credential profile "${credentialProfileId}" has no stored session`);
-  return meta.encrypted ? safeStorage.decryptString(blob) : blob.toString('utf8');
+  const plaintext = meta.encrypted ? safeStorage.decryptString(blob) : blob.toString('utf8');
+  return { meta, plaintext };
 }
 
 function writeTempStorageState(storageStateJson) {
@@ -48,6 +49,21 @@ function writeTempStorageState(storageStateJson) {
   fs.writeFileSync(file, storageStateJson);
   return file;
 }
+
+// Step types the runner engine actually knows how to execute — see
+// runner.js's `executeStep` switch. Import validation rejects anything
+// outside this set rather than silently accepting suites the runner would
+// blow up on mid-run.
+const KNOWN_STEP_TYPES = new Set([
+  'goto',
+  'click',
+  'fill',
+  'press',
+  'select',
+  'waitFor',
+  'assertVisible',
+  'assertText',
+]);
 
 function registerIpc({ store, getMainWindow }) {
   function send(channel, payload) {
@@ -77,12 +93,44 @@ function registerIpc({ store, getMainWindow }) {
     return true;
   });
 
+  handle('suites:importFromFile', async () => {
+    const win = getMainWindow();
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: 'Import suite',
+      filters: [{ name: 'Suite JSON', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (canceled || !filePaths || !filePaths[0]) return null;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
+    } catch {
+      throw new Error('Not a valid suite JSON file');
+    }
+
+    const stepsValid = Array.isArray(parsed.steps) && parsed.steps.every((s) => KNOWN_STEP_TYPES.has(s && s.type));
+    if (typeof parsed.name !== 'string' || !stepsValid) {
+      throw new Error('Not a valid suite JSON file');
+    }
+
+    return store.saveSuite({ ...parsed, id: crypto.randomUUID() });
+  });
+
   // ---- runs ----
   handle('runs:list', (filter) => store.listRuns(filter));
   handle('runs:get', (runId) => store.getRun(runId));
 
-  handle('runs:run', async (suiteId, opts = {}) => {
-    const { environment, headless = true, credentialProfileId } = opts;
+  // Shared by the IPC handler (triggeredBy 'manual') and the scheduler
+  // (triggeredBy 'schedule') — the only difference between the two call
+  // sites is who's calling and where opts come from. Credential handling
+  // branches on the profile's `mode`: 'session' (default) decrypts a
+  // Playwright storageState JSON to a temp file exactly as before; 'manual'
+  // decrypts a `{username,password}` blob and hands it to runSuite as
+  // `manualLogin` — that plaintext only ever lives in this function's
+  // scope and is zeroed in `finally`, never returned or logged.
+  async function executeRun(suiteId, opts = {}, triggeredBy) {
+    const { environment, headless = true, credentialProfileId, retries = 0 } = opts;
 
     const suite = store.getSuite(suiteId);
     if (!suite) throw new Error(`Suite "${suiteId}" not found`);
@@ -92,10 +140,16 @@ function registerIpc({ store, getMainWindow }) {
     const resolvedEnvironment = resolveEnvironment(project, environment);
 
     let storageStatePath = null;
+    let manualLogin = null;
     try {
       if (credentialProfileId) {
-        const storageStateJson = decryptCredential(store, credentialProfileId);
-        storageStatePath = writeTempStorageState(storageStateJson);
+        const { meta, plaintext } = decryptCredential(store, credentialProfileId);
+        if (meta.mode === 'manual') {
+          const { username, password } = JSON.parse(plaintext);
+          manualLogin = { loginUrl: meta.loginUrl, username, password };
+        } else {
+          storageStatePath = writeTempStorageState(plaintext);
+        }
       }
 
       return await runSuite({
@@ -105,13 +159,22 @@ function registerIpc({ store, getMainWindow }) {
         environment: resolvedEnvironment,
         storageStatePath,
         headless,
-        triggeredBy: 'manual',
+        triggeredBy,
+        manualLogin,
+        retries,
         onProgress: (event) => send('run:progress', { suiteId, ...event }),
       });
     } finally {
       if (storageStatePath && fs.existsSync(storageStatePath)) fs.unlinkSync(storageStatePath);
+      if (manualLogin) {
+        manualLogin.username = '';
+        manualLogin.password = '';
+        manualLogin = null;
+      }
     }
-  });
+  }
+
+  handle('runs:run', async (suiteId, opts = {}) => executeRun(suiteId, opts, 'manual'));
 
   handle('runs:openDir', (runId) => {
     shell.openPath(store.runDir(runId));
@@ -128,8 +191,8 @@ function registerIpc({ store, getMainWindow }) {
 
     let storageStatePath = null;
     if (credentialProfileId) {
-      const storageStateJson = decryptCredential(store, credentialProfileId);
-      storageStatePath = writeTempStorageState(storageStateJson);
+      const { plaintext } = decryptCredential(store, credentialProfileId);
+      storageStatePath = writeTempStorageState(plaintext);
     }
 
     recorder = createRecorder();
@@ -202,6 +265,36 @@ function registerIpc({ store, getMainWindow }) {
         loginUrl,
         username: (meta && meta.username) || null,
         encrypted,
+        mode: 'session',
+        createdAt: new Date().toISOString(),
+        lastUsedAt: null,
+      },
+      blob
+    );
+
+    return savedMeta;
+  });
+
+  // `session:saveManual` stores a manual username/password pair instead of
+  // a captured storageState — same encrypt-with-safeStorage-fallback shape
+  // as the capture path, just a different plaintext payload. The password
+  // is never echoed back in `savedMeta` (it isn't part of the credential
+  // meta object at all — only the encrypted blob holds it).
+  handle('session:saveManual', async ({ name, projectId, environment, loginUrl, username, password } = {}) => {
+    const plaintext = JSON.stringify({ username, password });
+    const encrypted = safeStorage.isEncryptionAvailable();
+    const blob = encrypted ? safeStorage.encryptString(plaintext) : Buffer.from(plaintext, 'utf8');
+
+    const savedMeta = store.saveCredential(
+      {
+        id: crypto.randomUUID(),
+        name: name || `Manual login ${new Date().toLocaleString()}`,
+        projectId,
+        environment,
+        loginUrl,
+        username: username || null,
+        encrypted,
+        mode: 'manual',
         createdAt: new Date().toISOString(),
         lastUsedAt: null,
       },
@@ -319,6 +412,19 @@ function registerIpc({ store, getMainWindow }) {
     shell.showItemInFolder(p);
     return true;
   });
+
+  // ---- schedules ----
+  handle('schedules:list', () => store.listSchedules());
+  handle('schedules:save', (schedule) => store.saveSchedule(schedule));
+  handle('schedules:remove', (id) => {
+    store.deleteSchedule(id);
+    return true;
+  });
+
+  // `executeRun` is returned so main.js can wire it into the scheduler
+  // (triggeredBy 'schedule') without duplicating the credential-decrypt /
+  // resolveEnvironment logic above.
+  return { executeRun };
 }
 
 module.exports = { registerIpc };

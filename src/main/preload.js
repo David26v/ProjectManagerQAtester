@@ -11,7 +11,7 @@ function invoke(channel) {
   return (...args) => ipcRenderer.invoke(channel, ...args);
 }
 
-const PUSH_CHANNELS = new Set(['recorder:step', 'run:progress']);
+const PUSH_CHANNELS = new Set(['recorder:step', 'run:progress', 'schedules:fired']);
 
 contextBridge.exposeInMainWorld('qaflow', {
   projects: {
@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('qaflow', {
     get: invoke('suites:get'),
     save: invoke('suites:save'),
     remove: invoke('suites:remove'),
+    importFromFile: invoke('suites:importFromFile'),
   },
   runs: {
     list: invoke('runs:list'),
@@ -39,6 +40,7 @@ contextBridge.exposeInMainWorld('qaflow', {
   },
   session: {
     capture: invoke('session:capture'),
+    saveManual: invoke('session:saveManual'),
     finish: invoke('session:finish'),
     cancel: invoke('session:cancel'),
     list: invoke('session:list'),
@@ -60,6 +62,11 @@ contextBridge.exposeInMainWorld('qaflow', {
   settings: {
     get: invoke('settings:get'),
     save: invoke('settings:save'),
+  },
+  schedules: {
+    list: invoke('schedules:list'),
+    save: invoke('schedules:save'),
+    remove: invoke('schedules:remove'),
   },
   app: {
     version: invoke('app:version'),

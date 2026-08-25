@@ -13,6 +13,7 @@ const { createStore } = require('../engine/store.js');
 const { createApi } = require('../engine/api.js');
 const { runSuite } = require('../engine/runner.js');
 const { registerIpc } = require('./ipc.js');
+const { createScheduler } = require('./scheduler.js');
 
 const isSmoke = process.argv.includes('--smoke');
 
@@ -91,7 +92,7 @@ async function bootApi() {
 app.whenReady().then(async () => {
   registerMediaProtocol();
   mainWindow = createWindow();
-  registerIpc({ store, getMainWindow: () => mainWindow });
+  const { executeRun } = registerIpc({ store, getMainWindow: () => mainWindow });
 
   // Attach BEFORE awaiting bootApi() — `loadFile` above is unawaited, so if
   // the static dist/index.html finishes loading while bootApi() is still
@@ -105,6 +106,24 @@ app.whenReady().then(async () => {
   }
 
   await bootApi();
+
+  // Scheduler is best-effort — a failure here (e.g. a corrupt
+  // schedules.json) must not take down the app; `--smoke` already exits
+  // via the `did-finish-load` listener above regardless of this.
+  try {
+    const scheduler = createScheduler({
+      store,
+      executeRun,
+      notify: (schedule, status) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('schedules:fired', { schedule, status });
+        }
+      },
+    });
+    scheduler.start();
+  } catch (e) {
+    console.warn(`[qaflow] scheduler failed to start: ${e.message}`);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
