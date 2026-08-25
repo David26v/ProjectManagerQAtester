@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id                 String   @id
+  name               String
+  key                String
+  baseUrl            String
+  type               String   @default("web")
+  environments       Json     @default("[]")
+  defaultEnvironment String?
+  description        String?
+  primary            Boolean  @default(false)
+  createdAt          DateTime
+  updatedAt          DateTime
+  suites             Suite[]
+}
+
+model Suite {
+  id          String   @id
+  projectId   String
+  name        String
+  description String?
+  tags        String[] @default([])
+  environment String?
+  steps       Json     @default("[]")
+  archived    Boolean  @default(false)
+  createdAt   DateTime
+  updatedAt   DateTime
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Run {
+  runId       String    @id
+  suiteId     String
+  projectId   String
+  suiteName   String
+  status      String
+  environment String?
+  triggeredBy String    @default("manual")
+  startedAt   DateTime
+  finishedAt  DateTime?
+  report      Json
+  @@index([projectId, startedAt])
+  @@index([suiteId, startedAt])
+}
+
+model Ticket {
+  id                String   @id
+  title             String
+  description       String?
+  severity          String
+  status            String
+  projectId         String?
+  runId             String?
+  labels            String[] @default([])
+  assignee          String?
+  reporter          String?
+  reproductionSteps Json     @default("[]")
+  attachments       Json     @default("[]")
+  comments          Json     @default("[]")
+  checklist         Json?
+  createdAt         DateTime
+  updatedAt         DateTime
+}
+
+model CredentialProfile {
+  id          String    @id
+  name        String
+  projectId   String?
+  environment String?
+  loginUrl    String?
+  username    String?
+  encrypted   Boolean   @default(true)
+  deviceLabel String?
+  createdAt   DateTime
+  lastUsedAt  DateTime?
+}
+
+model TicketCounter {
+  id    Int @id @default(1)
+  value Int @default(0)
+}

@@ -11,7 +11,8 @@
     "test": "node --test test/**/*.test.js",
     "smoke": "npm run build:renderer && electron . --smoke",
     "dist": "npm run build:renderer && electron-builder --win --publish never",
-    "release": "npm run build:renderer && electron-builder --win --publish always"
+    "release": "npm run build:renderer && electron-builder --win --publish always",
+    "db:push": "prisma db push"
   },
   "build": {
     "appId": "com.astreus.testertool",
@@ -53,9 +54,12 @@
     ]
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@supabase/supabase-js": "^2.112.4",
     "archiver": "^7.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^17.4.2",
     "electron-updater": "^6.8.9",
     "exceljs": "^4.4.0",
     "express": "^4.21.1",
@@ -71,6 +75,7 @@
     "adm-zip": "^0.6.0",
     "electron": "^32.2.0",
     "electron-builder": "^26.15.3",
+    "prisma": "^6.19.3",
     "tailwindcss": "^4.3.3",
     "vite": "^8.2.2"
   }
