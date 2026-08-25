@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input';
 import { StatusPill } from '@/components/StatusPill';
 import { fmtDate, timeAgo } from '@/lib/format';
 import { resolveMediaUrls } from '@/lib/media';
-import { STATUSES, statusLabel, severityMeta, ensureChecklist } from '@/lib/tickets';
+import { STATUSES, statusLabel, severityMeta, ensureChecklist, parseTicketDescription } from '@/lib/tickets';
 import { navigate } from '@/hooks/useHashRoute';
 import { useToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -46,6 +46,7 @@ export function TicketDetail({ id, data, startRun }) {
   const [commentDraft, setCommentDraft] = useState('');
   const [labelDraft, setLabelDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showRawDescription, setShowRawDescription] = useState(false);
   const commentRef = useRef(null);
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export function TicketDetail({ id, data, startRun }) {
     };
   }, [run]);
 
+  const parsedDescription = useMemo(() => parseTicketDescription(ticket?.description), [ticket?.description]);
   const checklist = useMemo(() => ensureChecklist(ticket), [ticket]);
   const checklistDone = checklist.filter((c) => c.done).length;
 
@@ -212,8 +214,37 @@ export function TicketDetail({ id, data, startRun }) {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-            <div className="text-sm font-semibold text-foreground">Description</div>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{ticket.description || 'No description provided.'}</p>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-foreground">Description</div>
+              {parsedDescription.isRawDump && (
+                <button onClick={() => setShowRawDescription((v) => !v)} className="text-xs font-medium text-primary hover:underline">
+                  {showRawDescription ? 'Show summary' : 'View raw'}
+                </button>
+              )}
+            </div>
+            {parsedDescription.isRawDump && showRawDescription ? (
+              <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{ticket.description}</p>
+            ) : (
+              <>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{parsedDescription.summary || 'No description provided.'}</p>
+                {(parsedDescription.expected || parsedDescription.actual) && (
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {parsedDescription.expected && (
+                      <div className="rounded-lg border border-success/30 bg-success-bg/40 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-success">Expected</div>
+                        <p className="mt-1 text-sm text-foreground">{parsedDescription.expected}</p>
+                      </div>
+                    )}
+                    {parsedDescription.actual && (
+                      <div className="rounded-lg border border-danger/30 bg-danger-bg/60 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-danger">Actual</div>
+                        <p className="mt-1 text-sm text-foreground">{parsedDescription.actual}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">

@@ -4,9 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { QuickAddTicketModal } from '@/components/QuickAddTicketModal';
 import { fmtShortDate, timeAgo } from '@/lib/format';
+import { shortRunId } from '@/lib/media';
 import { withinLastDays } from '@/lib/stats';
 import { STATUSES, SEVERITIES, severityMeta, ticketAgeDays } from '@/lib/tickets';
 import { navigate } from '@/hooks/useHashRoute';
+import { useToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 // `#/kanban` — bug ticket board (kanban-3 mockup). Tickets are created by
@@ -48,7 +50,7 @@ function TicketCard({ ticket, project, run, onDragStart }) {
           }}
           className="flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-primary"
         >
-          <Play className="h-3 w-3" /> Run: {run.runId.split('-').pop().slice(0, 6).toUpperCase()}
+          <Play className="h-3 w-3" /> Run: {shortRunId(run.runId)}
         </button>
       )}
       <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
@@ -68,6 +70,7 @@ function TicketCard({ ticket, project, run, onDragStart }) {
 
 export function Kanban({ data }) {
   const { projects, runs, tickets, reload } = data;
+  const toast = useToast();
 
   const [projectFilter, setProjectFilter] = useState('all');
   const [severityFilter, setSeverityFilter] = useState('all');
@@ -134,8 +137,7 @@ export function Kanban({ data }) {
       await window.qaflow.tickets.save({ ...ticket, status });
       reload();
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to move ticket', e);
+      toast(`Failed to move "${ticket.id}": ${e.message}`, 'error');
     }
   }
 
