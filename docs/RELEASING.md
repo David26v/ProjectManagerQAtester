@@ -23,8 +23,9 @@ You need a GitHub account with access to this repo. Nothing else.
 3. In the left sidebar, click **Release**.
 4. Click the **Run workflow** button (top-right of the list, it opens a small
    dropdown form).
-5. In the **version** box, type the new version number — semver, no leading
-   `v`. For example: `2.1.0`. It must be higher than the version currently
+5. In the **version** box, type the new version number — semver, with or
+   without the leading `v` — both work. For example: `2.1.0` or `v2.1.0`.
+   It must be higher than the version currently
    installed on people's machines (check `package.json`'s `"version"` on
    `main` if you're not sure what the last release was).
 6. Click the green **Run workflow** button in that dropdown.
