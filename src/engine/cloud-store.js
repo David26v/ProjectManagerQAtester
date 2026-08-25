@@ -304,6 +304,10 @@ function createCloudStore({ prisma, supabase, localStore }) {
   // ---- tickets ----
 
   async function nextTicketId() {
+    // Assumes every ticket id comes through this counter — it is never
+    // reconciled against manually-inserted/imported ticket ids, so a ticket
+    // written with an id outside this sequence (e.g. seeded/migrated data)
+    // could collide with a future generated id.
     // INSERT ... ON CONFLICT DO UPDATE (what `upsert` compiles to) is a
     // single atomic statement in Postgres, so concurrent callers serialize
     // on the row lock and each gets a distinct, strictly increasing value

@@ -36,7 +36,17 @@ test('cloud store round-trips the v1 store interface', async (t) => {
   const localStore = createStore(tmpBaseDir());
   const store = createCloudStore({ prisma, supabase: null, localStore });
 
+  // The `TicketCounter` row is a singleton shared with the real app (it's
+  // not `astreus-test-` prefixed, so the id-prefix cleanup below can't touch
+  // it) — snapshot its value so the concurrency assertions below can be
+  // undone in `finally`, instead of permanently burning 5 numbers out of
+  // production BUG- numbering on every test run.
+  let counterSnapshot = null;
+
   try {
+    counterSnapshot = await prisma.ticketCounter.findUnique({ where: { id: 1 } });
+
+
     // ---- projects ----
     assert.deepEqual(await store.listProjects().then((l) => l.filter((p) => p.id.startsWith(PREFIX))), []);
 
@@ -54,10 +64,12 @@ test('cloud store round-trips the v1 store interface', async (t) => {
     const fetchedProject = await store.getProject(project.id);
     assert.equal(fetchedProject.name, 'Acme');
 
+    // Guard against the two timestamps landing in the same millisecond.
+    await new Promise((resolve) => setTimeout(resolve, 5));
     const updatedProject = await store.saveProject({ id: project.id, name: 'Acme Inc' });
     assert.equal(updatedProject.createdAt, project.createdAt);
     assert.equal(updatedProject.name, 'Acme Inc');
-    assert.notEqual(updatedProject.updatedAt, project.updatedAt === undefined);
+    assert.notEqual(updatedProject.updatedAt, project.updatedAt);
 
     // ---- suites ----
     const suiteA = await store.saveSuite({ id: `${PREFIX}suite-a`, projectId: project.id, name: 'Login flow', steps: [] });
@@ -222,6 +234,13 @@ test('cloud store round-trips the v1 store interface', async (t) => {
     assert.equal((await store.listRuns({ projectId: project.id })).length, 0);
   } finally {
     await cleanup(prisma);
+    if (counterSnapshot) {
+      await prisma.ticketCounter.update({ where: { id: 1 }, data: { value: counterSnapshot.value } });
+    } else {
+      // No row existed before this test touched it (fresh DB) — remove the
+      // one `nextTicketId()` created rather than leaving a stray value: 5.
+      await prisma.ticketCounter.deleteMany({ where: { id: 1 } });
+    }
     await prisma.$disconnect();
   }
 });
