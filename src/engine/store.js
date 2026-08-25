@@ -113,7 +113,7 @@ function createStore(baseDir) {
   }
 
   function listRuns(filter) {
-    const projectId = typeof filter === 'string' ? filter : undefined;
+    const projectId = typeof filter === 'string' ? filter : (filter && typeof filter === 'object' ? filter.projectId : undefined);
     const suiteId = filter && typeof filter === 'object' ? filter.suiteId : undefined;
 
     const dirs = fs.readdirSync(runsDir).filter((name) => {
