@@ -156,14 +156,25 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
                 <Label htmlFor="cp-name">
                   Profile Name <span className="text-danger">*</span>
                 </Label>
-                <Input id="cp-name" placeholder="e.g., E-Commerce Admin" value={form.name} onChange={(e) => setField('name', e.target.value)} />
+                <Input
+                  id="cp-name"
+                  placeholder="e.g., E-Commerce Admin"
+                  value={form.name}
+                  onChange={(e) => setField('name', e.target.value)}
+                  disabled={sessionStatus === 'waiting'}
+                />
                 <p className="text-xs text-muted-foreground">A friendly name to identify this credential profile.</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="cp-project">
                   Linked Project <span className="text-danger">*</span>
                 </Label>
-                <Select id="cp-project" value={form.projectId} onChange={(e) => setField('projectId', e.target.value)}>
+                <Select
+                  id="cp-project"
+                  value={form.projectId}
+                  onChange={(e) => setField('projectId', e.target.value)}
+                  disabled={sessionStatus === 'waiting'}
+                >
                   <option value="">Select a project</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -180,7 +191,12 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
                 <Label htmlFor="cp-env">
                   Environment <span className="text-danger">*</span>
                 </Label>
-                <Select id="cp-env" value={form.environment} onChange={(e) => setField('environment', e.target.value)} disabled={environments.length === 0}>
+                <Select
+                  id="cp-env"
+                  value={form.environment}
+                  onChange={(e) => setField('environment', e.target.value)}
+                  disabled={environments.length === 0 || sessionStatus === 'waiting'}
+                >
                   <option value="">Select environment</option>
                   {environments.map((env) => (
                     <option key={env.name} value={env.name}>
@@ -194,14 +210,26 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
                 <Label htmlFor="cp-url">
                   Login URL <span className="text-danger">*</span>
                 </Label>
-                <Input id="cp-url" placeholder="https://app.example.com/login" value={form.loginUrl} onChange={(e) => setField('loginUrl', e.target.value)} />
+                <Input
+                  id="cp-url"
+                  placeholder="https://app.example.com/login"
+                  value={form.loginUrl}
+                  onChange={(e) => setField('loginUrl', e.target.value)}
+                  disabled={sessionStatus === 'waiting'}
+                />
                 <p className="text-xs text-muted-foreground">Full URL of the login page.</p>
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cp-username">Username</Label>
-              <Input id="cp-username" placeholder="qa.admin@company.com" value={form.username} onChange={(e) => setField('username', e.target.value)} />
+              <Input
+                id="cp-username"
+                placeholder="qa.admin@company.com"
+                value={form.username}
+                onChange={(e) => setField('username', e.target.value)}
+                disabled={sessionStatus === 'waiting'}
+              />
               <p className="text-xs text-muted-foreground">Username or email for login (for reference only — the session itself is captured below).</p>
             </div>
 
