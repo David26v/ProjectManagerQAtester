@@ -6,12 +6,62 @@ on `David26v/ProjectManagerQAtester` (see the `publish` block in
 short delay) and every 4 hours, download automatically, and prompt the user
 to restart once the download finishes.
 
-> **This is the local, by-hand release path.** A later task adds a GitHub
-> Actions pipeline as the primary way to cut a QA release — when that lands,
-> this doc gets restructured around CI and this section becomes the manual
-> fallback.
+There are two ways to cut a release:
 
-## Cutting a release
+- **§1 — from GitHub, for QA.** No dev machine, no terminal. This is the
+  normal way to ship a release.
+- **§2 — from a dev machine.** A local fallback for when Actions is down or
+  you need to debug the build itself.
+
+## 1. Deploy from GitHub (for QA)
+
+You need a GitHub account with access to this repo. Nothing else.
+
+1. Go to the repo on GitHub: `github.com/David26v/ProjectManagerQAtester`.
+2. Click the **Actions** tab (top of the page, between "Pull requests" and
+   "Projects").
+3. In the left sidebar, click **Release**.
+4. Click the **Run workflow** button (top-right of the list, it opens a small
+   dropdown form).
+5. In the **version** box, type the new version number — semver, no leading
+   `v`. For example: `2.1.0`. It must be higher than the version currently
+   installed on people's machines (check `package.json`'s `"version"` on
+   `main` if you're not sure what the last release was).
+6. Click the green **Run workflow** button in that dropdown.
+7. A new run appears at the top of the list within a few seconds (you may
+   need to refresh). Click into it to watch progress.
+8. Wait for it to go green. This takes several minutes — it runs the full
+   test suite, bumps the version, builds the Windows installer, and uploads
+   it. **If it goes red, the release did not go out** — the test run failed
+   and nothing was published. Open the failed step's log to see why, and
+   loop in a developer if it's not obvious.
+9. Once green, go to the **Releases** page (right sidebar of the repo's main
+   page, or `github.com/David26v/ProjectManagerQAtester/releases`) and
+   confirm the newest release has:
+   - `Astreus Tech Tester Tool Setup <version>.exe` — the installer.
+   - `latest.yml` — the update manifest `electron-updater` polls for.
+
+   If either is missing, the release is incomplete — don't tell users to
+   expect the update yet; re-run the workflow with the next version number
+   once you've worked out what's wrong.
+10. **Done.** You don't need to distribute the `.exe` yourself. Everyone with
+    QA Flow already installed will pick up the update automatically on their
+    next app launch (or within 4 hours if the app is left running) — just
+    let them know a new version is out if there's something they should
+    watch for.
+
+Notes:
+
+- The workflow refuses to run twice for the same version — if you type a
+  version that's already been released, it fails fast with a clear error
+  instead of publishing a duplicate. Just bump to the next version.
+- The very first install of a new machine still hits the SmartScreen warning
+  described below — that isn't something this pipeline can skip.
+
+## 2. Deploy from a dev machine
+
+Fallback path — use this if GitHub Actions is unavailable, or you need to
+debug the build locally before trusting CI with it.
 
 1. **Bump the version** in `package.json` (`"version"`), following semver.
    `electron-updater` compares this against the currently installed version,
