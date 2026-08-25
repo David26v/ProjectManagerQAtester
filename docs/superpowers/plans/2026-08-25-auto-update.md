@@ -70,6 +70,47 @@
 - [ ] Step 2: `npm test` green; `npm run smoke` SMOKE OK (proves dev inertness — no updater network calls in the log); `npm run dist` still builds.
 - [ ] Step 3: write RELEASING.md + docs sections. Commit `feat: auto-updates via github releases with restart-to-apply and settings controls`.
 
+### Task 3: GitHub Actions release pipeline (QA-friendly deploys)
+
+**Files:**
+- Create: `.github/workflows/release.yml`
+- Modify: `docs/RELEASING.md` (QA deploy steps become the primary flow)
+
+**Interfaces:**
+- Consumes: Task 1's `dist`/`release` scripts and publish config; Task 2's RELEASING.md.
+- Produces: workflow `Release` with two triggers: `workflow_dispatch` (input `version`, e.g. `2.1.0`) and `push` tags `v*`. Dispatch flow: checkout with `fetch-depth: 0`; setup-node 22 with npm cache; `npm ci`; `npx playwright install chromium`; `npm test` (gate — publish never runs on red); set the version (`npm version <input> --no-git-tag-version`), commit `chore: release v<version>` and tag `v<version>` as github-actions bot, push both; `npm run build:renderer`; `electron-builder --win --publish always` with `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`. Tag-push flow: same minus the version-bump/commit steps. `runs-on: windows-latest`; top-level `permissions: contents: write`; `CSC_IDENTITY_AUTO_DISCOVERY: "false"` in env so runners never attempt signing.
+- RELEASING.md restructured: §1 "Deploy from GitHub (for QA)" — Actions tab → Release → Run workflow → type version → wait green → verify the Release assets (`.exe` + `latest.yml`); §2 "Deploy from a dev machine" keeps the existing `gh auth token` flow as fallback; keep the SmartScreen caveat.
+
+- [ ] Step 1: write the workflow exactly as above.
+- [ ] Step 2: validate the YAML (`node -e "require('js-yaml')"` is NOT available — use a careful read + `npx --yes yaml-lint` if quick, else state manual-review); `npm test` + `npm run smoke` still green (untouched app code).
+- [ ] Step 3: restructure RELEASING.md. Commit `feat: github actions release pipeline for one-click qa deploys`.
+
+### Task 4: UI + consistency polish sweep (deferred-minor cleanup)
+
+**Files:**
+- Create: `src/renderer/src/hooks/useDismissable.js` (outside-click + Escape close for menus)
+- Modify: `src/renderer/src/components/Sidebar.jsx`, `src/renderer/src/screens/{Projects,Suites,Dashboard,Runs,RunDetail,Reports,ReportBuilder,Credentials}.jsx`, `src/renderer/src/App.jsx`, `src/renderer/src/lib/format.js`, `src/main/ipc.js`, `src/engine/runner.js`, `bin/qaflow.js`
+- Test: `npm test` additions only where engine behavior changes (videoPath gating)
+
+**The sweep — every item below is in scope, nothing else is:**
+1. Sidebar footer says "Electron v0.1.0" (app version mislabeled): change label to `Astreus v<app.version>`.
+2. `runner.js` sets `videoPath: 'video.webm'` even when no video captured → RunDetail renders a broken `<video>`: only set `videoPath` when the video file exists in capturedMedia (engine test: run with video disabled asserts `videoPath` null/absent) and keep RunDetail's empty-state guard working.
+3. RunDetail's local `StepStatusPill` gives `skipped` gray while shared `StatusPill` uses amber: replace the local pill with the shared `StatusPill`.
+4. Kebab/dropdown menus don't close on outside click or Escape (Projects cards, Suites cards, Dashboard schedule rows): implement `useDismissable(ref, onClose)` and apply to all three.
+5. Credentials "Last used: never" forever: in `ipc.js`, after a successful run/recorder start that used a profile, `store.saveCredential({ ...meta, lastUsedAt: new Date().toISOString() })` (metadata-only update, no blob).
+6. Export actions have no in-flight disable (Reports rows + ReportBuilder buttons + Generate modal): disable the clicked control while its promise is pending (per-row/per-button busy state).
+7. Reports stat chips share one icon: give "This week" `CalendarClock`.
+8. Runs screen offers a dead "Skipped" status filter: remove it.
+9. Stale comments claiming the Runs screen is a placeholder (`App.jsx`, `RunProgressBanner.jsx`): delete/correct them.
+10. CLI `--format` flag is inert: remove it from `bin/qaflow.js` usage text and arg parsing (JSON is the only output).
+11. `timeUntil` month-boundary bug in `format.js` ("Tomorrow" check fails Aug 31→Sep 1): compute via date difference, add a small unit test if a format test file exists — else cover via a trivial new `test/format.test.js` with node:test (pure function, no DOM).
+12. `schedules:fired` toast only fires on Dashboard: move the subscription to `App.jsx` so the toast + data refresh happen on any screen (remove the Dashboard-local duplicate).
+13. Bundle export ignores the user's chosen filename (`ipc.js` bundle handler writes engine-derived name into the chosen directory): pass the user's chosen full path through to the bundler output.
+
+- [ ] Step 1: engine change (item 2) via TDD; run engine tests.
+- [ ] Step 2: main/ipc items (5, 13) + renderer items (1,3,4,6,7,8,9,12) + CLI (10) + format (11).
+- [ ] Step 3: `npm test` green (incl. new tests) + `npm run smoke` SMOKE OK. Commit `fix: ui and consistency polish sweep across renderer, ipc, runner, cli`.
+
 ---
 
 ## Out of Scope
