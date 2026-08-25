@@ -12,7 +12,7 @@
     "smoke": "npm run build:renderer && electron . --smoke",
     "dist": "npm run build:renderer && electron-builder --win --publish never",
     "release": "npm run build:renderer && electron-builder --win --publish always",
-    "db:push": "prisma db push"
+    "db:push": "node scripts/db-push.mjs"
   },
   "build": {
     "appId": "com.astreus.testertool",
