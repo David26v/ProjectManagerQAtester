@@ -85,7 +85,8 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
     return new Date(year, month - 1, day, hh, mm).toISOString();
   }, [scheduleDate, scheduleTime]);
 
-  const canSchedule = Boolean(environment && scheduleAtIso);
+  const scheduleInPast = Boolean(scheduleAtIso && new Date(scheduleAtIso).getTime() <= Date.now());
+  const canSchedule = Boolean(environment && scheduleAtIso && !scheduleInPast);
 
   async function handleSchedule() {
     if (!canSchedule || scheduling) return;
@@ -282,10 +283,12 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
                   </Select>
                 </div>
               </div>
-              <Alert variant="info">
-                {scheduleAtIso
-                  ? `Runs ${RECURRENCE_LABELS[recurrence]} starting ${fmtDate(scheduleAtIso)}.`
-                  : 'Pick a date and time to schedule this run.'}
+              <Alert variant={scheduleInPast ? 'warning' : 'info'}>
+                {scheduleInPast
+                  ? 'That date and time is in the past — pick a future time to schedule this run.'
+                  : scheduleAtIso
+                    ? `Runs ${RECURRENCE_LABELS[recurrence]} starting ${fmtDate(scheduleAtIso)}.`
+                    : 'Pick a date and time to schedule this run.'}
               </Alert>
               <div className="flex justify-end">
                 <Button type="button" onClick={handleSchedule} disabled={!canSchedule || scheduling}>

@@ -55,6 +55,10 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
     if (sessionStatus === 'waiting') {
       window.qaflow.session.cancel().catch(() => {});
     }
+    // This modal stays mounted (Dialog just toggles visibility) and the
+    // form only resets on the next `open` — drop the plaintext password
+    // from state on every way out, not just re-open.
+    setForm((f) => ({ ...f, password: '' }));
     onClose();
   }
 
@@ -123,15 +127,21 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
   async function handleSaveManual() {
     if (!canSaveManual || saving) return;
     setSaving(true);
+    const payload = {
+      name: form.name.trim(),
+      projectId: form.projectId,
+      environment: form.environment,
+      loginUrl: form.loginUrl.trim(),
+      username: form.username.trim(),
+      password: form.password,
+    };
+    // Drop the plaintext password from state right away — it's already
+    // captured in `payload` for the request in flight, and the modal stays
+    // mounted after `onClose()`, so leaving it in `form` would keep it live
+    // in memory until the next open.
+    setForm((f) => ({ ...f, password: '' }));
     try {
-      const savedMeta = await window.qaflow.session.saveManual({
-        name: form.name.trim(),
-        projectId: form.projectId,
-        environment: form.environment,
-        loginUrl: form.loginUrl.trim(),
-        username: form.username.trim(),
-        password: form.password,
-      });
+      const savedMeta = await window.qaflow.session.saveManual(payload);
       toast(`Credential profile "${savedMeta?.name || form.name}" saved.`, 'success');
       onClose();
       onSaved?.(savedMeta);

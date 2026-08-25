@@ -15,6 +15,7 @@ const crypto = require('node:crypto');
 const { app, ipcMain, safeStorage, shell, dialog } = require('electron');
 
 const { runSuite } = require('../engine/runner.js');
+const { computeNextRunAt } = require('../engine/schedule.js');
 const { createRecorder } = require('../engine/recorder.js');
 const sessionEngine = require('../engine/session.js');
 const { exportRunsToExcel } = require('../engine/exporters/excel.js');
@@ -419,7 +420,19 @@ function registerIpc({ store, getMainWindow }) {
 
   // ---- schedules ----
   handle('schedules:list', () => store.listSchedules());
-  handle('schedules:save', (schedule) => store.saveSchedule(schedule));
+  // Enabling a schedule (fresh save, or a renderer toggle) whose nextRunAt
+  // is missing or already in the past must recompute it — otherwise a
+  // re-enabled daily/weekly schedule would sit there enabled but never
+  // picked up by the scheduler's `nextRunAt <= now` due check. Recompute
+  // stays in the one pure engine function; this is just the thin adapter
+  // rule that decides when to call it.
+  handle('schedules:save', (schedule) => {
+    const now = new Date().toISOString();
+    if (schedule.enabled && (!schedule.nextRunAt || schedule.nextRunAt < now)) {
+      return store.saveSchedule({ ...schedule, nextRunAt: computeNextRunAt(schedule, now) });
+    }
+    return store.saveSchedule(schedule);
+  });
   handle('schedules:remove', (id) => {
     store.deleteSchedule(id);
     return true;

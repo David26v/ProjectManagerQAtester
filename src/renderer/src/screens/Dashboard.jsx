@@ -31,12 +31,19 @@ import { cn } from '@/lib/utils';
 const RECURRENCE_LABEL = { once: 'Once', daily: 'Daily', weekly: 'Weekly' };
 
 function ScheduleRow({ schedule, suiteName, onToggle, onDelete, menuOpen, onToggleMenu }) {
+  // A lapsed 'once' schedule (fired, nextRunAt cleared to null by the
+  // scheduler) can't be meaningfully re-enabled — there's no future
+  // occurrence to compute. Recurring schedules with a null/past nextRunAt
+  // still toggle on fine; `schedules:save` recomputes nextRunAt on enable.
+  const lapsedOnce = !schedule.nextRunAt && schedule.recurrence === 'once';
+  const statusLabel = lapsedOnce ? 'Completed' : schedule.enabled ? timeUntil(schedule.nextRunAt) : 'Paused';
+
   return (
     <div className="flex items-center gap-3 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-foreground">{suiteName}</div>
         <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>{schedule.enabled ? timeUntil(schedule.nextRunAt) : 'Paused'}</span>
+          <span>{statusLabel}</span>
           <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             {RECURRENCE_LABEL[schedule.recurrence] || schedule.recurrence}
           </span>
@@ -45,11 +52,13 @@ function ScheduleRow({ schedule, suiteName, onToggle, onDelete, menuOpen, onTogg
       <button
         role="switch"
         aria-checked={schedule.enabled}
+        disabled={lapsedOnce}
         onClick={() => onToggle(schedule)}
-        title={schedule.enabled ? 'Disable' : 'Enable'}
+        title={lapsedOnce ? 'This one-time run already fired — schedule a new run to run it again.' : schedule.enabled ? 'Disable' : 'Enable'}
         className={cn(
           'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-          schedule.enabled ? 'bg-primary' : 'bg-secondary'
+          schedule.enabled ? 'bg-primary' : 'bg-secondary',
+          lapsedOnce && 'cursor-not-allowed opacity-40'
         )}
       >
         <span
@@ -123,10 +132,11 @@ export function Dashboard({ data, onNewProject }) {
     return unsubscribe;
   }, [toast, loadSchedules, reload]);
 
-  const upcomingSchedules = useMemo(
-    () => schedules.filter((s) => s.nextRunAt).slice(0, 5),
-    [schedules]
-  );
+  // `store.listSchedules()` already sorts ascending by nextRunAt with nulls
+  // last, so lapsed/completed schedules (nextRunAt: null) sink to the
+  // bottom instead of disappearing — they still need to show up here so
+  // they can be deleted (or, for daily/weekly, re-enabled).
+  const upcomingSchedules = useMemo(() => schedules.slice(0, 5), [schedules]);
 
   const suiteNamesById = useMemo(() => Object.fromEntries(suites.map((s) => [s.id, s.name])), [suites]);
 
