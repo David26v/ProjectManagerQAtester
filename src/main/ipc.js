@@ -21,6 +21,7 @@ const sessionEngine = require('../engine/session.js');
 const { exportRunsToExcel } = require('../engine/exporters/excel.js');
 const { generateTicketText, ticketFromRun } = require('../engine/exporters/ticket.js');
 const { createBundle } = require('../engine/exporters/bundle.js');
+const { signedMediaUrl } = require('../engine/cloud/media.js');
 
 // Mirrors `resolveEnvironment` in engine/api.js (kept local — that function
 // isn't exported, and it's a small enough helper that duplicating it here
@@ -66,7 +67,7 @@ const KNOWN_STEP_TYPES = new Set([
   'assertText',
 ]);
 
-function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => null }) {
+function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => null, supabase = null }) {
   function send(channel, payload) {
     const win = getMainWindow();
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -460,7 +461,16 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
 
   // ---- app ----
   handle('app:version', () => app.getVersion());
-  handle('app:mediaUrl', (runId, relPath) => `qaflow-media://${runId}/${relPath}`);
+  handle('app:mediaUrl', (runId, relPath) => {
+    // Cloud runs (Task 3) store media in Supabase Storage — `relPath` shows
+    // up here as the `storage:<runId>/<filename>` sentinel the cloud store
+    // wrote into the report. Legacy/local runs keep the v1 protocol.
+    if (typeof relPath === 'string' && relPath.startsWith('storage:')) {
+      if (!supabase) throw new Error('Cloud storage is not configured');
+      return signedMediaUrl(supabase, relPath.slice('storage:'.length));
+    }
+    return `qaflow-media://${runId}/${relPath}`;
+  });
   handle('app:revealPath', (p) => {
     shell.showItemInFolder(p);
     return true;

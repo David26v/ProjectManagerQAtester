@@ -17,6 +17,9 @@
 // secret bytes and this device's own settings stay local.
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+
+const { uploadRunMedia } = require('./cloud/media.js');
 
 function toIso(date) {
   return date instanceof Date ? date.toISOString() : date;
@@ -108,12 +111,11 @@ function serializeSchedule(row) {
   };
 }
 
-function createCloudStore({ prisma, supabase, localStore }) {
-  // `supabase` isn't used yet — Task 3 wires it into `saveRun` for media
-  // upload. Accepted here so the constructor shape matches the plan/brief
-  // and callers don't need to change when that lands.
-  void supabase;
+function hasLocalMedia(report) {
+  return (report.capturedMedia || []).some((m) => typeof m.path === 'string' && !m.path.startsWith('storage:'));
+}
 
+function createCloudStore({ prisma, supabase, localStore }) {
   // ---- projects ----
 
   async function listProjects() {
@@ -215,23 +217,37 @@ function createCloudStore({ prisma, supabase, localStore }) {
 
   async function saveRun(report) {
     const runId = report.runId || crypto.randomUUID();
-    const saved = { ...report, runId };
-    const columns = {
-      suiteId: saved.suiteId,
-      projectId: saved.projectId,
-      suiteName: saved.suiteName,
-      status: saved.status,
-      environment: saved.environment ?? null,
-      triggeredBy: saved.triggeredBy ?? 'manual',
-      startedAt: new Date(saved.startedAt),
-      finishedAt: saved.finishedAt ? new Date(saved.finishedAt) : null,
-      report: saved,
-    };
+    let saved = { ...report, runId };
+    const columnsFor = (r) => ({
+      suiteId: r.suiteId,
+      projectId: r.projectId,
+      suiteName: r.suiteName,
+      status: r.status,
+      environment: r.environment ?? null,
+      triggeredBy: r.triggeredBy ?? 'manual',
+      startedAt: new Date(r.startedAt),
+      finishedAt: r.finishedAt ? new Date(r.finishedAt) : null,
+      report: r,
+    });
+
     await prisma.run.upsert({
       where: { runId },
-      create: { runId, ...columns },
-      update: columns,
+      create: { runId, ...columnsFor(saved) },
+      update: columnsFor(saved),
     });
+
+    // Local media (screenshots/video written by the runner into
+    // `localStore.runDir(runId)`) still needs to move to Supabase Storage
+    // before this run report is "done" — best-effort per file (see
+    // `uploadRunMedia`), then re-persist the mutated report (paths now
+    // `storage:<runId>/<filename>`) and reclaim the local disk.
+    if (supabase && hasLocalMedia(saved)) {
+      const runDirPath = localStore.runDir(runId);
+      saved = await uploadRunMedia(supabase, runId, runDirPath, saved);
+      await prisma.run.update({ where: { runId }, data: columnsFor(saved) });
+      await fs.promises.rm(runDirPath, { recursive: true, force: true });
+    }
+
     return saved;
   }
 

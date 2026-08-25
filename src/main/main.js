@@ -16,6 +16,8 @@ const { registerIpc } = require('./ipc.js');
 const { createScheduler } = require('./scheduler.js');
 const { createBrowserBootstrap } = require('./browser-bootstrap.js');
 const { createUpdates } = require('./updates.js');
+const { createSupabaseAdmin } = require('../engine/cloud/supabase.js');
+const { ensureBucket } = require('../engine/cloud/media.js');
 
 const isSmoke = process.argv.includes('--smoke');
 
@@ -120,6 +122,27 @@ function bootBrowser() {
   });
 }
 
+// Supabase isn't wired as the app's store yet (Task 4) — this is only the
+// admin client for run-media storage (signed URLs in ipc.js, bucket
+// bootstrap below). Missing/invalid env must not crash the app: `--smoke`
+// runs with no `.env` at all, and even in normal use cloud storage being
+// down shouldn't block local-only workflows.
+let supabaseAdmin = null;
+try {
+  supabaseAdmin = createSupabaseAdmin();
+} catch (e) {
+  console.warn(`[qaflow] Supabase admin client unavailable: ${e.message}`);
+}
+
+async function bootMediaBucket() {
+  if (!supabaseAdmin) return;
+  try {
+    await ensureBucket(supabaseAdmin);
+  } catch (e) {
+    console.warn(`[qaflow] failed to ensure Supabase Storage bucket: ${e.message}`);
+  }
+}
+
 async function bootApi() {
   const settings = store.getSettings();
   const port = settings.apiPort || 4317;
@@ -141,6 +164,7 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow,
     updates,
     getBrowserStatus: () => lastBrowserStatus,
+    supabase: supabaseAdmin,
   });
 
   // Attach BEFORE awaiting bootApi() — `loadFile` above is unawaited, so if
@@ -170,7 +194,7 @@ app.whenReady().then(async () => {
     });
   }
 
-  await bootApi();
+  await Promise.all([bootApi(), bootMediaBucket()]);
 
   // Scheduler is best-effort — a failure here (e.g. a corrupt
   // schedules.json) must not take down the app; `--smoke` already exits
