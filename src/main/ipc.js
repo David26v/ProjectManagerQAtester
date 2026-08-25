@@ -281,6 +281,10 @@ function registerIpc({ store, getMainWindow }) {
   // is never echoed back in `savedMeta` (it isn't part of the credential
   // meta object at all — only the encrypted blob holds it).
   handle('session:saveManual', async ({ name, projectId, environment, loginUrl, username, password } = {}) => {
+    if (!name || !username || !password || !loginUrl) {
+      throw new Error('Name, login URL, username and password are required');
+    }
+
     const plaintext = JSON.stringify({ username, password });
     const encrypted = safeStorage.isEncryptionAvailable();
     const blob = encrypted ? safeStorage.encryptString(plaintext) : Buffer.from(plaintext, 'utf8');
@@ -288,11 +292,11 @@ function registerIpc({ store, getMainWindow }) {
     const savedMeta = store.saveCredential(
       {
         id: crypto.randomUUID(),
-        name: name || `Manual login ${new Date().toLocaleString()}`,
+        name,
         projectId,
         environment,
         loginUrl,
-        username: username || null,
+        username,
         encrypted,
         mode: 'manual',
         createdAt: new Date().toISOString(),
