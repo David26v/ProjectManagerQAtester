@@ -8,6 +8,9 @@ import { Projects } from '@/screens/Projects';
 import { ProjectDetail } from '@/screens/ProjectDetail';
 import { Suites } from '@/screens/Suites';
 import { SuiteDetail } from '@/screens/SuiteDetail';
+import { Runs } from '@/screens/Runs';
+import { RunDetail } from '@/screens/RunDetail';
+import { ReportBuilder } from '@/screens/ReportBuilder';
 import { Credentials } from '@/screens/Credentials';
 import { ToastProvider, useToast } from '@/lib/toast';
 import { useHashRoute, navigate } from '@/hooks/useHashRoute';
@@ -112,9 +115,13 @@ function Screen({ route, data, onNewProject, startRun }) {
 
   if (top === 'credentials') return <Credentials data={data} />;
 
+  if (top === 'runs') {
+    if (second && route.segments[2] === 'report') return <ReportBuilder id={second} data={data} />;
+    if (second) return <RunDetail id={second} data={data} startRun={startRun} />;
+    return <Runs data={data} startRun={startRun} />;
+  }
+
   switch (top) {
-    case 'runs':
-      return <EmptyScreen title={second ? 'Run Detail' : 'Runs'} subtitle="Run history and live progress land here in a later task." />;
     case 'kanban':
       return <EmptyScreen title="Kanban Board" subtitle="Bug ticket board — coming in a later task." />;
     case 'reports':
