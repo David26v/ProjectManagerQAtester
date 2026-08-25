@@ -4,7 +4,7 @@ require('dotenv').config();
 
 // Table names as Prisma creates them (quoted, PascalCase — matches the model
 // names 1:1 since schema.prisma has no @@map overrides).
-const ASTREUS_TABLES = ['Project', 'Suite', 'Run', 'Ticket', 'CredentialProfile', 'TicketCounter'];
+const ASTREUS_TABLES = ['Project', 'Suite', 'Run', 'Ticket', 'CredentialProfile', 'TicketCounter', 'Schedule'];
 
 test('cloud db connectivity and schema', async (t) => {
   if (!process.env.DATABASE_URL) return t.skip('DATABASE_URL not set');
@@ -12,7 +12,7 @@ test('cloud db connectivity and schema', async (t) => {
   const prisma = createPrisma();
   try {
     await prisma.$queryRaw`SELECT 1`;
-    for (const model of ['project', 'suite', 'run', 'ticket', 'credentialProfile', 'ticketCounter']) {
+    for (const model of ['project', 'suite', 'run', 'ticket', 'credentialProfile', 'ticketCounter', 'schedule']) {
       assert.ok(Number.isInteger(await prisma[model].count()));
     }
 

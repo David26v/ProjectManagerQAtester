@@ -87,3 +87,20 @@ model TicketCounter {
   id    Int @id @default(1)
   value Int @default(0)
 }
+
+model Schedule {
+  id                  String    @id
+  suiteId             String
+  projectId           String
+  name                String
+  environment         String?
+  headless            Boolean   @default(true)
+  credentialProfileId String?
+  at                  DateTime
+  recurrence          String
+  enabled             Boolean   @default(true)
+  lastRunAt           DateTime?
+  nextRunAt           DateTime?
+  createdAt           DateTime
+  updatedAt           DateTime
+}
