@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileText, Download, Braces, Send, Zap, Image as ImageIcon, Film, ScrollText, Paperclip, CheckCircle2 } from 'lucide-react';
+import { FileText, Download, Braces, Send, Zap, Image as ImageIcon, Film, ScrollText, Paperclip, CheckCircle2, Info } from 'lucide-react';
 import { Dialog, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,7 +26,22 @@ const DESTINATIONS = [
 // actual export IPC calls itself rather than delegating back up to
 // ReportBuilder, since every format/destination combination here maps
 // directly onto one `reports.*` (or `app.revealPath`) call.
-export function GenerateReportModal({ open, onClose, run, project, environments = [], selection, title, severity, environment, onSeverityChange, onEnvironmentChange, onTitleChange }) {
+export function GenerateReportModal({
+  open,
+  onClose,
+  run,
+  project,
+  environments = [],
+  selection,
+  title,
+  severity,
+  environment,
+  reproSteps = [],
+  onSeverityChange,
+  onEnvironmentChange,
+  onTitleChange,
+  onFlushSelection,
+}) {
   const toast = useToast();
   const [formats, setFormats] = useState({ json: true, excel: true, ticket: true, zip: true });
   const [destination, setDestination] = useState('download');
@@ -61,6 +76,13 @@ export function GenerateReportModal({ open, onClose, run, project, environments 
     const errors = [];
 
     try {
+      // Cancel ReportBuilder's pending debounced save and write the live
+      // selection synchronously first — exportJson/exportExcel/createTicket/
+      // bundle all read `reportSelection` server-side, so a Generate click
+      // right after a checkbox/note change would otherwise ship the
+      // previous selection.
+      if (onFlushSelection) await onFlushSelection();
+
       const forceZip = destination === 'send-to-david';
 
       if (formats.json && destination !== 'copy-json') {
@@ -74,7 +96,7 @@ export function GenerateReportModal({ open, onClose, run, project, environments 
 
       if (destination === 'copy-json') {
         try {
-          const payload = { ...run, reportTitle: title, severity, environment, reportSelection: selection };
+          const payload = { ...run, reportTitle: title, severity, environment, reproductionSteps: reproSteps, reportSelection: selection };
           await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
           produced.push('JSON copied to clipboard');
         } catch (e) {
@@ -147,6 +169,10 @@ export function GenerateReportModal({ open, onClose, run, project, environments 
 
       <div className="grid grid-cols-1 gap-6 overflow-y-auto p-5 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-5">
+          <div className="flex items-start gap-1.5 rounded-md bg-accent px-2.5 py-2 text-xs text-accent-foreground">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>Title, severity and repro-step edits appear in the copied JSON only — file exports and tickets use the run's recorded values (v2 will persist edits).</span>
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label>
               Report Title <span className="text-danger">*</span>
@@ -171,7 +197,7 @@ export function GenerateReportModal({ open, onClose, run, project, environments 
                 Environment <span className="text-danger">*</span>
               </Label>
               <Select value={environment} onChange={(e) => onEnvironmentChange(e.target.value)}>
-                {environments.length === 0 && <option value={environment}>{environment || 'Unknown'}</option>}
+                {!environments.includes(environment) && <option value={environment}>{environment || 'Unknown'}</option>}
                 {environments.map((env) => (
                   <option key={env} value={env}>
                     {env}

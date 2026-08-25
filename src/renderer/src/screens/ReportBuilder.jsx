@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, Plus, X, FileText, Braces, FileSpreadsheet, Send, ChevronDown, Image as ImageIcon, Film, Copy } from 'lucide-react';
+import { ChevronLeft, Plus, X, FileText, Braces, FileSpreadsheet, Send, ChevronDown, Image as ImageIcon, Film, Copy, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -164,6 +164,22 @@ export function ReportBuilder({ id, data }) {
     setSelection((s) => ({ ...s, notes: { ...s.notes, [mediaId]: text } }));
   }
 
+  // Every export action reads `reportSelection` server-side, but the
+  // autosave above is debounced 600ms — a click right after a checkbox/note
+  // change would otherwise export the previous selection. Cancel the
+  // pending debounce and write the live selection synchronously first.
+  async function flushSelection() {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    try {
+      await window.qaflow.reports.saveSelection(run.runId, selection);
+    } catch (e) {
+      toast(`Failed to save selection: ${e.message}`, 'error');
+    }
+  }
+
   function addStep() {
     if (!newStepDraft.trim()) return;
     setReproSteps((steps) => [...steps, newStepDraft.trim()]);
@@ -179,6 +195,7 @@ export function ReportBuilder({ id, data }) {
   }
 
   async function exportJson() {
+    await flushSelection();
     try {
       const filePath = await window.qaflow.reports.exportJson(run.runId);
       if (filePath) toast(`JSON report saved to ${filePath}`, 'success');
@@ -188,6 +205,7 @@ export function ReportBuilder({ id, data }) {
   }
 
   async function exportExcel() {
+    await flushSelection();
     try {
       const filePath = await window.qaflow.reports.exportExcel(run.runId);
       if (filePath) toast(`Excel report saved to ${filePath}`, 'success');
@@ -197,6 +215,7 @@ export function ReportBuilder({ id, data }) {
   }
 
   async function createTicket() {
+    await flushSelection();
     try {
       const ticket = await window.qaflow.reports.createTicket(run.runId);
       toast(`Bug ticket "${ticket.title}" created on the Kanban board.`, 'success');
@@ -206,6 +225,7 @@ export function ReportBuilder({ id, data }) {
   }
 
   async function sendToDavid() {
+    await flushSelection();
     try {
       const zipPath = await window.qaflow.reports.bundle(run.runId);
       if (!zipPath) return;
@@ -216,7 +236,15 @@ export function ReportBuilder({ id, data }) {
     }
   }
 
-  const previewJson = JSON.stringify({ ...run, reportSelection: selection }, null, 2);
+  // Mirrors what GenerateReportModal's "Copy JSON" destination copies — the
+  // one export path that can actually honor the title/severity/environment/
+  // repro-step edits, since exportJson/exportExcel/createTicket all read the
+  // persisted run+reportSelection server-side (see the hint text below).
+  const previewJson = JSON.stringify(
+    { ...run, reportSelection: selection, reportTitle: title, severity, environment, reproductionSteps: reproSteps },
+    null,
+    2
+  );
   const environments = (project?.environments || []).map((e) => e.name);
 
   return (
@@ -337,6 +365,10 @@ export function ReportBuilder({ id, data }) {
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
             <div className="text-sm font-semibold text-foreground">Report Summary</div>
+            <div className="mt-2 flex items-start gap-1.5 rounded-md bg-accent px-2.5 py-2 text-xs text-accent-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>Title, severity and repro-step edits appear in the copied JSON only — file exports and tickets use the run's recorded values (v2 will persist edits).</span>
+            </div>
             <div className="mt-3 flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label>Title</Label>
@@ -358,7 +390,7 @@ export function ReportBuilder({ id, data }) {
                 <div className="flex flex-col gap-1.5">
                   <Label>Environment</Label>
                   <Select value={environment} onChange={(e) => setEnvironment(e.target.value)}>
-                    {environments.length === 0 && <option value={environment}>{environment || 'Unknown'}</option>}
+                    {!environments.includes(environment) && <option value={environment}>{environment || 'Unknown'}</option>}
                     {environments.map((env) => (
                       <option key={env} value={env}>
                         {env}
@@ -496,9 +528,11 @@ export function ReportBuilder({ id, data }) {
         title={title}
         severity={severity}
         environment={environment}
+        reproSteps={reproSteps}
         onTitleChange={setTitle}
         onSeverityChange={setSeverity}
         onEnvironmentChange={setEnvironment}
+        onFlushSelection={flushSelection}
       />
     </div>
   );
