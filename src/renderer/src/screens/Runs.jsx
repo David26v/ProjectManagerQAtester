@@ -16,7 +16,6 @@ const STATUS_FILTERS = [
   { key: 'all', label: 'All Status' },
   { key: 'passed', label: 'Passed' },
   { key: 'failed', label: 'Failed' },
-  { key: 'skipped', label: 'Skipped' },
 ];
 
 function runDuration(run) {

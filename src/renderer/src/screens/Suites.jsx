@@ -24,6 +24,7 @@ import { projectVisual } from '@/lib/projectVisuals';
 import { timeAgo } from '@/lib/format';
 import { stepIcon, stepDetail } from '@/lib/steps';
 import { navigate } from '@/hooks/useHashRoute';
+import { useDismissable } from '@/hooks/useDismissable';
 import { useToast } from '@/lib/toast';
 
 const TABS = [
@@ -40,6 +41,8 @@ function elapsedLabel(seconds) {
 
 function SuiteCard({ suite, project, onRun, onEdit, onDuplicate, onArchive, menuOpen, onToggleMenu }) {
   const { Icon, colorClass } = projectVisual(project || { id: suite.projectId });
+  const menuRef = useRef(null);
+  useDismissable(menuRef, () => onToggleMenu(null), menuOpen);
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm">
       <div className="flex items-start justify-between gap-2">
@@ -60,7 +63,7 @@ function SuiteCard({ suite, project, onRun, onEdit, onDuplicate, onArchive, menu
             </div>
           </div>
         </div>
-        <div className="relative shrink-0">
+        <div ref={menuRef} className="relative shrink-0">
           <button onClick={() => onToggleMenu(suite.id)} className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent">
             <MoreVertical className="h-4 w-4" />
           </button>

@@ -67,8 +67,12 @@ export function timeUntil(iso) {
 
   const target = new Date(then);
   const now = new Date();
-  const isTomorrow =
-    target.getDate() === now.getDate() + 1 && target.getMonth() === now.getMonth() && target.getFullYear() === now.getFullYear();
+  // Compares whole calendar days via local midnight, not raw
+  // getDate()+1 — the naive version breaks across a month boundary
+  // (Aug 31 -> Sep 1: getDate() 31 + 1 = 32 never matches getDate() 1).
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(target) - startOfDay(now)) / 86400000);
+  const isTomorrow = dayDiff === 1;
   const time = target.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   if (isTomorrow) return `Tomorrow ${time}`;
 

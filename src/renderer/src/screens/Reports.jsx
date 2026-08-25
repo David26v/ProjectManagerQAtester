@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { FileBarChart2, FileText, Braces, FileSpreadsheet, Archive } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { FileBarChart2, CalendarClock, FileText, Braces, FileSpreadsheet, Archive } from 'lucide-react';
 import { StatusPill } from '@/components/StatusPill';
 import { fmtDate } from '@/lib/format';
 import { shortRunId } from '@/lib/media';
@@ -24,6 +24,26 @@ function lastUpdated(run) {
 export function Reports({ data }) {
   const { projects, runs } = data;
   const toast = useToast();
+
+  // Keys are `${runId}:${action}` — disables only the clicked button on the
+  // clicked row while its export promise is in flight, not the whole table.
+  const [busyKeys, setBusyKeys] = useState(() => new Set());
+
+  function withBusy(runId, action, fn) {
+    const key = `${runId}:${action}`;
+    return async () => {
+      setBusyKeys((s) => new Set(s).add(key));
+      try {
+        await fn();
+      } finally {
+        setBusyKeys((s) => {
+          const next = new Set(s);
+          next.delete(key);
+          return next;
+        });
+      }
+    };
+  }
 
   const projectsById = useMemo(() => Object.fromEntries(projects.map((p) => [p.id, p])), [projects]);
 
@@ -80,7 +100,7 @@ export function Reports({ data }) {
           <span className="text-sm font-semibold text-foreground">{stats.total}</span>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm">
-          <FileBarChart2 className="h-4 w-4 text-muted-foreground" />
+          <CalendarClock className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">This week</span>
           <span className="text-sm font-semibold text-foreground">{stats.thisWeek}</span>
         </div>
@@ -139,22 +159,25 @@ export function Reports({ data }) {
                           <FileText className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => exportExcel(r)}
-                          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-primary"
+                          onClick={withBusy(r.runId, 'excel', () => exportExcel(r))}
+                          disabled={busyKeys.has(`${r.runId}:excel`)}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                           title="Export Excel"
                         >
                           <FileSpreadsheet className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => exportJson(r)}
-                          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-primary"
+                          onClick={withBusy(r.runId, 'json', () => exportJson(r))}
+                          disabled={busyKeys.has(`${r.runId}:json`)}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                           title="Export JSON"
                         >
                           <Braces className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => zipBundle(r)}
-                          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-primary"
+                          onClick={withBusy(r.runId, 'zip', () => zipBundle(r))}
+                          disabled={busyKeys.has(`${r.runId}:zip`)}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                           title="Zip Bundle"
                         >
                           <Archive className="h-3.5 w-3.5" />

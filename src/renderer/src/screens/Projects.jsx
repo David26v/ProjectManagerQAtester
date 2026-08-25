@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Search,
   Plus,
@@ -23,6 +23,7 @@ import { RunSuiteModal } from '@/components/RunSuiteModal';
 import { projectVisual, envColorClass, envDotClass } from '@/lib/projectVisuals';
 import { timeAgo, fmtDate } from '@/lib/format';
 import { navigate } from '@/hooks/useHashRoute';
+import { useDismissable } from '@/hooks/useDismissable';
 import { useToast } from '@/lib/toast';
 
 const COMPARISON_ROWS = [
@@ -46,6 +47,38 @@ function EnvChips({ environments = [] }) {
         </span>
       ))}
       {extra > 0 && <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">+{extra}</span>}
+    </div>
+  );
+}
+
+function ProjectMenu({ project, open, onToggle, onEdit, onDelete }) {
+  const ref = useRef(null);
+  useDismissable(ref, () => onToggle(null), open);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        onClick={() => onToggle(open ? null : project.id)}
+        className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-10 z-20 w-36 rounded-md border border-border bg-card py-1 shadow-lg">
+          <button
+            className="block w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-secondary"
+            onClick={() => onEdit(project)}
+          >
+            Edit
+          </button>
+          <button
+            className="block w-full px-3 py-1.5 text-left text-sm text-danger hover:bg-danger-bg"
+            onClick={() => onDelete(project)}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -255,36 +288,19 @@ export function Projects({ data, onNewProject, startRun }) {
                     >
                       <Play className="h-4 w-4" />
                     </button>
-                    <div className="relative shrink-0">
-                      <button
-                        onClick={() => setMenuOpenId(menuOpenId === project.id ? null : project.id)}
-                        className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
-                      {menuOpenId === project.id && (
-                        <div className="absolute right-0 top-10 z-20 w-36 rounded-md border border-border bg-card py-1 shadow-lg">
-                          <button
-                            className="block w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-secondary"
-                            onClick={() => {
-                              setMenuOpenId(null);
-                              navigate(`/projects/${project.id}`);
-                            }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="block w-full px-3 py-1.5 text-left text-sm text-danger hover:bg-danger-bg"
-                            onClick={() => {
-                              setMenuOpenId(null);
-                              setDeleteTarget(project);
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <ProjectMenu
+                      project={project}
+                      open={menuOpenId === project.id}
+                      onToggle={setMenuOpenId}
+                      onEdit={(p) => {
+                        setMenuOpenId(null);
+                        navigate(`/projects/${p.id}`);
+                      }}
+                      onDelete={(p) => {
+                        setMenuOpenId(null);
+                        setDeleteTarget(p);
+                      }}
+                    />
                   </div>
                 );
               })}

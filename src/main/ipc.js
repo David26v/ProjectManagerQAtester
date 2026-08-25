@@ -142,9 +142,11 @@ function registerIpc({ store, getMainWindow, updates }) {
 
     let storageStatePath = null;
     let manualLogin = null;
+    let credentialMeta = null;
     try {
       if (credentialProfileId) {
         const { meta, plaintext } = decryptCredential(store, credentialProfileId);
+        credentialMeta = meta;
         if (meta.mode === 'manual') {
           const { username, password } = JSON.parse(plaintext);
           manualLogin = { loginUrl: meta.loginUrl, username, password };
@@ -153,7 +155,7 @@ function registerIpc({ store, getMainWindow, updates }) {
         }
       }
 
-      return await runSuite({
+      const report = await runSuite({
         store,
         suite,
         project,
@@ -165,6 +167,15 @@ function registerIpc({ store, getMainWindow, updates }) {
         retries,
         onProgress: (event) => send('run:progress', { suiteId, ...event }),
       });
+
+      // Metadata-only update — never touches the encrypted blob — so
+      // Credentials' "Last used" stops reading "never" forever once a
+      // profile has actually been used for a run.
+      if (credentialMeta) {
+        store.saveCredential({ ...credentialMeta, lastUsedAt: new Date().toISOString() });
+      }
+
+      return report;
     } finally {
       if (storageStatePath && fs.existsSync(storageStatePath)) fs.unlinkSync(storageStatePath);
       if (manualLogin) {
@@ -191,11 +202,13 @@ function registerIpc({ store, getMainWindow, updates }) {
     if (recorder && recorder.isRunning()) throw new Error('A recording is already in progress');
 
     let storageStatePath = null;
+    let credentialMeta = null;
     if (credentialProfileId) {
       const { meta, plaintext } = decryptCredential(store, credentialProfileId);
       if (meta.mode === 'manual') {
         throw new Error("Manual-entry profiles can't seed the recorder — use a captured session profile");
       }
+      credentialMeta = meta;
       storageStatePath = writeTempStorageState(plaintext);
     }
 
@@ -213,6 +226,12 @@ function registerIpc({ store, getMainWindow, updates }) {
       });
     } finally {
       if (storageStatePath && fs.existsSync(storageStatePath)) fs.unlinkSync(storageStatePath);
+    }
+
+    // Metadata-only update — same as executeRun — once the recorder has
+    // actually started using this profile's session.
+    if (credentialMeta) {
+      store.saveCredential({ ...credentialMeta, lastUsedAt: new Date().toISOString() });
     }
 
     return { running: true, projectId };
@@ -382,7 +401,8 @@ function registerIpc({ store, getMainWindow, updates }) {
     if (canceled || !filePath) return null;
 
     const outputDir = path.dirname(filePath);
-    return createBundle(run, store.runDir(runId), outputDir);
+    const fileName = path.basename(filePath);
+    return createBundle(run, store.runDir(runId), outputDir, { fileName });
   });
 
   handle('reports:ticketText', (runId) => {

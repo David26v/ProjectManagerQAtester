@@ -31,9 +31,12 @@ function mediaToInclude(run, includeMediaIds) {
   return media;
 }
 
-async function createBundle(run, runDirPath, outputPath, { includeMediaIds = null } = {}) {
+async function createBundle(run, runDirPath, outputPath, { includeMediaIds = null, fileName = null } = {}) {
   fs.mkdirSync(outputPath, { recursive: true });
-  const finalPath = path.join(outputPath, bundleFileName(run));
+  // `fileName` carries the user's chosen filename through from the save
+  // dialog (ipc.js) — falls back to the engine-derived name only when the
+  // caller doesn't have one (e.g. no dialog involved).
+  const finalPath = path.join(outputPath, fileName || bundleFileName(run));
 
   const reportFile = path.join(runDirPath, 'report.json');
   const reportBuffer = fs.existsSync(reportFile)

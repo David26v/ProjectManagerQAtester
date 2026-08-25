@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   Folder,
   Play,
@@ -25,6 +25,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { fmtDate, timeAgo, timeUntil } from '@/lib/format';
 import { withinLastDays, withinPriorWindow, successRate } from '@/lib/stats';
 import { navigate } from '@/hooks/useHashRoute';
+import { useDismissable } from '@/hooks/useDismissable';
 import { useToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +38,8 @@ function ScheduleRow({ schedule, suiteName, onToggle, onDelete, menuOpen, onTogg
   // still toggle on fine; `schedules:save` recomputes nextRunAt on enable.
   const lapsedOnce = !schedule.nextRunAt && schedule.recurrence === 'once';
   const statusLabel = lapsedOnce ? 'Completed' : schedule.enabled ? timeUntil(schedule.nextRunAt) : 'Paused';
+  const menuRef = useRef(null);
+  useDismissable(menuRef, () => onToggleMenu(null), menuOpen);
 
   return (
     <div className="flex items-center gap-3 py-2.5">
@@ -68,7 +71,7 @@ function ScheduleRow({ schedule, suiteName, onToggle, onDelete, menuOpen, onTogg
           )}
         />
       </button>
-      <div className="relative shrink-0">
+      <div ref={menuRef} className="relative shrink-0">
         <button
           onClick={() => onToggleMenu(schedule.id)}
           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
@@ -107,7 +110,7 @@ function runShortId(run) {
 }
 
 export function Dashboard({ data, onNewProject }) {
-  const { projects, suites, runs, reload } = data;
+  const { projects, suites, runs } = data;
   const toast = useToast();
   const [projectFilter, setProjectFilter] = useState('all');
   const [schedules, setSchedules] = useState([]);
@@ -123,14 +126,15 @@ export function Dashboard({ data, onNewProject }) {
     loadSchedules();
   }, [loadSchedules]);
 
+  // App.jsx owns the pass/fail toast + app-wide data reload for
+  // `schedules:fired` (so it fires from any screen) — this local
+  // subscription just keeps the Scheduled Runs list on this screen fresh.
   useEffect(() => {
-    const unsubscribe = window.qaflow.on('schedules:fired', ({ schedule, status }) => {
-      toast(`Scheduled run ${schedule.name}: ${status === 'passed' ? 'passed' : 'failed'}`, status === 'passed' ? 'success' : 'error');
+    const unsubscribe = window.qaflow.on('schedules:fired', () => {
       loadSchedules();
-      reload();
     });
     return unsubscribe;
-  }, [toast, loadSchedules, reload]);
+  }, [loadSchedules]);
 
   // `store.listSchedules()` already sorts ascending by nextRunAt with nulls
   // last, so lapsed/completed schedules (nextRunAt: null) sink to the

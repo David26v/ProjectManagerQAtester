@@ -118,6 +118,7 @@ async function runAttempt({
   triggeredBy,
   manualLogin,
   attempt,
+  captureVideo,
 }) {
   const targetUrl = (environment && environment.baseUrl) || project.baseUrl;
   const runId = `run-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
@@ -141,7 +142,7 @@ async function runAttempt({
   let context;
   try {
     context = await browser.newContext({
-      recordVideo: { dir },
+      ...(captureVideo === false ? {} : { recordVideo: { dir } }),
       storageState: storageStatePath || undefined,
       viewport: { width: 1280, height: 800 },
     });
@@ -240,6 +241,11 @@ async function runAttempt({
     await browser.close();
   }
 
+  // Only set when a video was actually captured (see the `capturedMedia`
+  // push above) — otherwise RunDetail's `<video>` tag would point at a
+  // file that was never written.
+  const videoMedia = capturedMedia.find((m) => m.type === 'video');
+
   const report = {
     runId,
     suiteId: suite.id,
@@ -254,7 +260,7 @@ async function runAttempt({
     steps,
     consoleErrors,
     networkFailures,
-    videoPath: 'video.webm',
+    videoPath: videoMedia ? videoMedia.path : null,
     capturedMedia,
     reportSelection: null,
   };
@@ -273,6 +279,7 @@ async function runSuite({
   triggeredBy = 'manual',
   manualLogin = null,
   retries = 0,
+  captureVideo = true,
 }) {
   let attempts = 0;
   let report;
@@ -292,6 +299,7 @@ async function runSuite({
       triggeredBy,
       manualLogin,
       attempt: attempts,
+      captureVideo,
     });
 
     // A discarded attempt's run dir (video/screenshots) is cleaned up —

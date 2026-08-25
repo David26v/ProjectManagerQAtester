@@ -85,7 +85,7 @@ export function Sidebar({ activeSegment, userName, userEmail, version }) {
         <div className="mt-2 rounded-md bg-secondary/60 px-2.5 py-2 text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            Electron {version ? `v${version}` : '—'}
+            Astreus {version ? `v${version}` : '—'}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 pl-3">All systems operational</div>
         </div>

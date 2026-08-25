@@ -62,6 +62,7 @@ export function ReportBuilder({ id, data }) {
   const [mediaUrls, setMediaUrls] = useState({});
   const [evidenceId, setEvidenceId] = useState(null);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [busyAction, setBusyAction] = useState(null);
 
   const [title, setTitle] = useState(() => (run ? `${run.suiteName} Failure - Run ${shortRunId(run.runId)}` : ''));
   const [description, setDescription] = useState('');
@@ -219,36 +220,46 @@ export function ReportBuilder({ id, data }) {
   }
 
   async function exportJson() {
+    setBusyAction('json');
     await flushSelection();
     try {
       const filePath = await window.qaflow.reports.exportJson(run.runId);
       if (filePath) toast(`JSON report saved to ${filePath}`, 'success');
     } catch (e) {
       toast(`Failed to export JSON: ${e.message}`, 'error');
+    } finally {
+      setBusyAction(null);
     }
   }
 
   async function exportExcel() {
+    setBusyAction('excel');
     await flushSelection();
     try {
       const filePath = await window.qaflow.reports.exportExcel(run.runId);
       if (filePath) toast(`Excel report saved to ${filePath}`, 'success');
     } catch (e) {
       toast(`Failed to export Excel: ${e.message}`, 'error');
+    } finally {
+      setBusyAction(null);
     }
   }
 
   async function createTicket() {
+    setBusyAction('ticket');
     await flushSelection();
     try {
       const ticket = await window.qaflow.reports.createTicket(run.runId);
       toast(`Bug ticket "${ticket.title}" created on the Kanban board.`, 'success');
     } catch (e) {
       toast(`Failed to create ticket: ${e.message}`, 'error');
+    } finally {
+      setBusyAction(null);
     }
   }
 
   async function sendToDavid() {
+    setBusyAction('david');
     await flushSelection();
     try {
       const zipPath = await window.qaflow.reports.bundle(run.runId);
@@ -257,6 +268,8 @@ export function ReportBuilder({ id, data }) {
       toast('Bundle ready to send.', 'success');
     } catch (e) {
       toast(`Failed to build bundle: ${e.message}`, 'error');
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -465,23 +478,29 @@ export function ReportBuilder({ id, data }) {
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
             <div className="text-sm font-semibold text-foreground">Actions</div>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <Button className="col-span-2" onClick={() => setGenerateOpen(true)}>
+              <Button className="col-span-2" onClick={() => setGenerateOpen(true)} disabled={Boolean(busyAction)}>
                 <FileText className="h-4 w-4" /> Generate Report
               </Button>
-              <Button variant="outline" onClick={exportJson}>
-                <Braces className="h-4 w-4" /> Export JSON
+              <Button variant="outline" onClick={exportJson} disabled={busyAction === 'json'}>
+                <Braces className="h-4 w-4" /> {busyAction === 'json' ? 'Exporting…' : 'Export JSON'}
               </Button>
-              <Button variant="outline" onClick={exportExcel}>
-                <FileSpreadsheet className="h-4 w-4" /> Export Excel
+              <Button variant="outline" onClick={exportExcel} disabled={busyAction === 'excel'}>
+                <FileSpreadsheet className="h-4 w-4" /> {busyAction === 'excel' ? 'Exporting…' : 'Export Excel'}
               </Button>
-              <Button variant="outline" className="col-span-2" onClick={createTicket}>
-                <Send className="h-4 w-4" /> Create Jira Ticket
+              <Button variant="outline" className="col-span-2" onClick={createTicket} disabled={busyAction === 'ticket'}>
+                <Send className="h-4 w-4" /> {busyAction === 'ticket' ? 'Creating…' : 'Create Jira Ticket'}
               </Button>
               <div className="col-span-2 flex">
-                <Button variant="outline" className="flex-1 rounded-r-none" onClick={sendToDavid}>
-                  <Send className="h-4 w-4" /> Send to David
+                <Button variant="outline" className="flex-1 rounded-r-none" onClick={sendToDavid} disabled={busyAction === 'david'}>
+                  <Send className="h-4 w-4" /> {busyAction === 'david' ? 'Sending…' : 'Send to David'}
                 </Button>
-                <Button variant="outline" className="rounded-l-none border-l-0 px-2" onClick={sendToDavid} title="Send to David">
+                <Button
+                  variant="outline"
+                  className="rounded-l-none border-l-0 px-2"
+                  onClick={sendToDavid}
+                  disabled={busyAction === 'david'}
+                  title="Send to David"
+                >
                   <ChevronDown className="h-3.5 w-3.5" />
                 </Button>
               </div>

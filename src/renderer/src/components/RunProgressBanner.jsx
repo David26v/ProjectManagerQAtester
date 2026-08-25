@@ -1,9 +1,10 @@
 import { Loader2, X } from 'lucide-react';
 
 // Fixed live-progress banner for the run kicked off from Run Suite modal.
-// Lives at the App shell level (not the Runs screen, which is still a
-// placeholder) so it survives the modal closing and the navigate("#/runs")
-// that follows it — App.jsx's run manager owns the `run:progress` stream.
+// Lives at the App shell level (not the Runs screen) so it survives the
+// modal closing and the navigate("#/runs") that follows it, and keeps
+// showing progress even if the user navigates to a different screen —
+// App.jsx's run manager owns the `run:progress` stream.
 export function RunProgressBanner({ run, onDismiss }) {
   if (!run) return null;
 

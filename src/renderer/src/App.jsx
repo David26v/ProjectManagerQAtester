@@ -54,9 +54,9 @@ function useAppData() {
 // Owns the single in-flight run kicked off from a Run Suite modal. Lives
 // above the modal (which closes/unmounts immediately on "Run Suite") so the
 // `qaflow.runs.run()` promise and the `run:progress` stream both survive the
-// navigate("#/runs") that follows — the Runs screen itself is still a
-// Task 9 placeholder, so a fixed banner is what carries the live progress
-// and the pass/fail toast in the meantime.
+// navigate("#/runs") that follows — a fixed banner (rather than in-screen
+// state) is what carries the live progress and the pass/fail toast, since
+// it needs to survive navigating away from the Runs screen entirely.
 function useRunManager(reload) {
   const toast = useToast();
   const [activeRun, setActiveRun] = useState(null);
@@ -123,6 +123,23 @@ function useRunManager(reload) {
   );
 
   return { activeRun, startRun, dismissActiveRun: () => setActiveRun(null) };
+}
+
+// Surfaces the scheduler's fire events at the app level — not just the
+// Dashboard — so the pass/fail toast and the app-wide data refresh happen
+// no matter which screen the user is on when a scheduled run completes.
+// Dashboard keeps a lighter local subscription (no toast) just to refresh
+// its own schedules list/statuses.
+function useScheduleFiredListener(reload) {
+  const toast = useToast();
+
+  useEffect(() => {
+    const unsubscribe = window.qaflow.on('schedules:fired', ({ schedule, status }) => {
+      toast(`Scheduled run ${schedule.name}: ${status === 'passed' ? 'passed' : 'failed'}`, status === 'passed' ? 'success' : 'error');
+      reload();
+    });
+    return unsubscribe;
+  }, [toast, reload]);
 }
 
 // Surfaces the main process's Playwright Chromium bootstrap. `installing`/
@@ -206,6 +223,7 @@ function AppShell() {
   const data = useAppData();
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const { activeRun, startRun, dismissActiveRun } = useRunManager(data.reload);
+  useScheduleFiredListener(data.reload);
   useBrowserBootstrapListener();
   const { readyVersion, dismiss: dismissUpdateReady } = useUpdateReadyListener();
   const [confirmRestartOpen, setConfirmRestartOpen] = useState(false);

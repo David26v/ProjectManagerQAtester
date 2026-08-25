@@ -46,15 +46,6 @@ function fmtOffset(ms) {
   return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-function StepStatusPill({ status }) {
-  const styles = {
-    passed: 'bg-success-bg text-success',
-    failed: 'bg-danger-bg text-danger',
-    skipped: 'bg-secondary text-muted-foreground',
-  };
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${styles[status] || styles.skipped}`}>{status}</span>;
-}
-
 export function RunDetail({ id, data, startRun }) {
   const { projects, suites, runs, reload } = data;
   const toast = useToast();
@@ -242,7 +233,7 @@ export function RunDetail({ id, data, startRun }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-medium text-muted-foreground">{fmtOffset(offsets[idx])}</span>
-                      <StepStatusPill status={step.status} />
+                      <StatusPill status={step.status} />
                     </div>
                     <div className="truncate text-sm font-medium text-foreground">{step.name}</div>
                     {step.status === 'failed' && step.error && (

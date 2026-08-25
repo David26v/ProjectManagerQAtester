@@ -71,6 +71,30 @@ test('runSuite: passing suite runs to completion with video captured', async (t)
   assert.equal(persisted.status, 'passed');
 });
 
+test('runSuite: captureVideo:false records no video and leaves videoPath unset', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const store = createStore(tmpBaseDir());
+  const project = { id: 'proj-1', name: 'Fixture', baseUrl: fixture.url };
+  const environment = { name: 'Local', baseUrl: fixture.url };
+  const suite = {
+    id: 'suite-no-video',
+    projectId: project.id,
+    name: 'No video flow',
+    steps: [{ type: 'goto', name: 'Go to login', value: '/', timeout: 10000 }],
+  };
+
+  const report = await runSuite({ store, suite, project, environment, headless: true, captureVideo: false });
+
+  assert.equal(report.status, 'passed');
+  assert.ok(!report.videoPath);
+  assert.ok(!report.capturedMedia.some((m) => m.type === 'video'));
+
+  const runDirectory = store.runDir(report.runId);
+  assert.ok(!fs.existsSync(path.join(runDirectory, 'video.webm')));
+});
+
 test('runSuite: failing suite captures failure screenshot and skips later steps', async (t) => {
   const fixture = await startFixtureServer();
   t.after(() => fixture.close());

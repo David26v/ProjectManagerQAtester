@@ -104,7 +104,7 @@ async function cmdStatus(args, baseUrl) {
 async function cmdReport(args, baseUrl) {
   const runId = args['run-id'];
   if (!runId) {
-    throw new Error('Usage: qaflow report --run-id <id> [--format json]');
+    throw new Error('Usage: qaflow report --run-id <id>');
   }
 
   const report = await apiFetch(baseUrl, `/runs/${runId}/report`);
