@@ -261,6 +261,17 @@ export function Suites({ data, route, startRun }) {
     }
   }
 
+  async function handleImportSuite() {
+    try {
+      const imported = await window.qaflow.suites.importFromFile();
+      if (!imported) return; // user cancelled the file picker
+      toast(`Imported suite "${imported.name}".`, 'success');
+      reload();
+    } catch (e) {
+      toast(`Failed to import suite: ${e.message}`, 'error');
+    }
+  }
+
   async function toggleArchive(suite) {
     try {
       await window.qaflow.suites.save({ ...suite, archived: !suite.archived });
@@ -279,7 +290,7 @@ export function Suites({ data, route, startRun }) {
           <p className="mt-1 text-sm text-muted-foreground">Manage your test suites, and record new tests.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => toast('Suite import arrives in v2.', 'info')}>
+          <Button variant="outline" onClick={handleImportSuite}>
             <Upload className="h-4 w-4" /> Import Suite
           </Button>
           <Button

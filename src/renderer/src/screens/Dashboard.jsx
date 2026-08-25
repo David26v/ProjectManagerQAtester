@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Folder,
   Play,
@@ -14,15 +14,72 @@ import {
   Save,
   FileText,
   ArrowRight,
+  MoreVertical,
+  Trash2,
 } from 'lucide-react';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { StatCard } from '@/components/StatCard';
 import { StatusPill } from '@/components/StatusPill';
-import { fmtDate, timeAgo } from '@/lib/format';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { fmtDate, timeAgo, timeUntil } from '@/lib/format';
 import { withinLastDays, withinPriorWindow, successRate } from '@/lib/stats';
 import { navigate } from '@/hooks/useHashRoute';
 import { useToast } from '@/lib/toast';
+import { cn } from '@/lib/utils';
+
+const RECURRENCE_LABEL = { once: 'Once', daily: 'Daily', weekly: 'Weekly' };
+
+function ScheduleRow({ schedule, suiteName, onToggle, onDelete, menuOpen, onToggleMenu }) {
+  return (
+    <div className="flex items-center gap-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-foreground">{suiteName}</div>
+        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span>{schedule.enabled ? timeUntil(schedule.nextRunAt) : 'Paused'}</span>
+          <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {RECURRENCE_LABEL[schedule.recurrence] || schedule.recurrence}
+          </span>
+        </div>
+      </div>
+      <button
+        role="switch"
+        aria-checked={schedule.enabled}
+        onClick={() => onToggle(schedule)}
+        title={schedule.enabled ? 'Disable' : 'Enable'}
+        className={cn(
+          'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+          schedule.enabled ? 'bg-primary' : 'bg-secondary'
+        )}
+      >
+        <span
+          className={cn(
+            'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
+            schedule.enabled ? 'translate-x-4' : 'translate-x-0.5'
+          )}
+        />
+      </button>
+      <div className="relative shrink-0">
+        <button
+          onClick={() => onToggleMenu(schedule.id)}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+        >
+          <MoreVertical className="h-3.5 w-3.5" />
+        </button>
+        {menuOpen && (
+          <div className="absolute right-0 top-8 z-20 w-32 rounded-md border border-border bg-card py-1 shadow-lg">
+            <button
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-danger hover:bg-danger-bg"
+              onClick={() => onDelete(schedule)}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const QUICK_STEPS = [
   { n: 1, title: 'Connect', body: 'Connect to your application or API', icon: Link2, color: 'bg-blue-50 text-blue-600' },
@@ -41,9 +98,56 @@ function runShortId(run) {
 }
 
 export function Dashboard({ data, onNewProject }) {
-  const { projects, suites, runs } = data;
+  const { projects, suites, runs, reload } = data;
   const toast = useToast();
   const [projectFilter, setProjectFilter] = useState('all');
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleMenuId, setScheduleMenuId] = useState(null);
+  const [scheduleDeleteTarget, setScheduleDeleteTarget] = useState(null);
+
+  const loadSchedules = useCallback(async () => {
+    const list = await window.qaflow.schedules.list();
+    setSchedules(list || []);
+  }, []);
+
+  useEffect(() => {
+    loadSchedules();
+  }, [loadSchedules]);
+
+  useEffect(() => {
+    const unsubscribe = window.qaflow.on('schedules:fired', ({ schedule, status }) => {
+      toast(`Scheduled run ${schedule.name}: ${status === 'passed' ? 'passed' : 'failed'}`, status === 'passed' ? 'success' : 'error');
+      loadSchedules();
+      reload();
+    });
+    return unsubscribe;
+  }, [toast, loadSchedules, reload]);
+
+  const upcomingSchedules = useMemo(
+    () => schedules.filter((s) => s.nextRunAt).slice(0, 5),
+    [schedules]
+  );
+
+  const suiteNamesById = useMemo(() => Object.fromEntries(suites.map((s) => [s.id, s.name])), [suites]);
+
+  async function toggleSchedule(schedule) {
+    try {
+      await window.qaflow.schedules.save({ ...schedule, enabled: !schedule.enabled });
+      loadSchedules();
+    } catch (e) {
+      toast(`Failed to update schedule: ${e.message}`, 'error');
+    }
+  }
+
+  async function deleteSchedule(schedule) {
+    try {
+      await window.qaflow.schedules.remove(schedule.id);
+      toast(`Schedule for "${schedule.name}" deleted.`, 'success');
+      loadSchedules();
+    } catch (e) {
+      toast(`Failed to delete schedule: ${e.message}`, 'error');
+    }
+  }
 
   const filteredRuns = useMemo(
     () => (projectFilter === 'all' ? runs : runs.filter((r) => r.projectId === projectFilter)),
@@ -323,10 +427,29 @@ export function Dashboard({ data, onNewProject }) {
                 View calendar
               </a>
             </div>
-            <div className="mt-6 flex flex-col items-center gap-2 py-6 text-center">
-              <Calendar className="h-8 w-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">No scheduled runs yet</p>
-            </div>
+            {upcomingSchedules.length === 0 ? (
+              <div className="mt-6 flex flex-col items-center gap-2 py-6 text-center">
+                <Calendar className="h-8 w-8 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">No scheduled runs yet</p>
+              </div>
+            ) : (
+              <div className="mt-2 flex flex-col divide-y divide-border">
+                {upcomingSchedules.map((s) => (
+                  <ScheduleRow
+                    key={s.id}
+                    schedule={s}
+                    suiteName={s.name || suiteNamesById[s.suiteId] || 'Unknown suite'}
+                    onToggle={toggleSchedule}
+                    onDelete={(sched) => {
+                      setScheduleMenuId(null);
+                      setScheduleDeleteTarget(sched);
+                    }}
+                    menuOpen={scheduleMenuId === s.id}
+                    onToggleMenu={(id) => setScheduleMenuId(scheduleMenuId === id ? null : id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
@@ -379,6 +502,16 @@ export function Dashboard({ data, onNewProject }) {
           })}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(scheduleDeleteTarget)}
+        title={`Delete schedule for "${scheduleDeleteTarget?.name}"?`}
+        description="This removes the scheduled run. It won't affect any runs that already happened."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => scheduleDeleteTarget && deleteSchedule(scheduleDeleteTarget)}
+        onClose={() => setScheduleDeleteTarget(null)}
+      />
     </div>
   );
 }

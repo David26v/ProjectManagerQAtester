@@ -48,6 +48,36 @@ export function timeAgo(iso) {
   return `${diffYr}y ago`;
 }
 
+// Inverse of `timeAgo` for future timestamps — "in 2h", "Tomorrow 09:00",
+// or a short date once it's more than a couple days out.
+export function timeUntil(iso) {
+  if (!iso) return '—';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+
+  const diffSec = Math.round((then - Date.now()) / 1000);
+  if (diffSec <= 0) return 'due now';
+  if (diffSec < 60) return `in ${diffSec}s`;
+
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `in ${diffMin}m`;
+
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `in ${diffHr}h`;
+
+  const target = new Date(then);
+  const now = new Date();
+  const isTomorrow =
+    target.getDate() === now.getDate() + 1 && target.getMonth() === now.getMonth() && target.getFullYear() === now.getFullYear();
+  const time = target.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (isTomorrow) return `Tomorrow ${time}`;
+
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 7) return `in ${diffDay}d`;
+
+  return fmtShortDate(iso);
+}
+
 export function fmtDuration(ms) {
   if (!Number.isFinite(ms)) return '—';
   const totalSec = Math.round(ms / 1000);

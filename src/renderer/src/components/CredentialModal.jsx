@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 
 const TABS = [
   { key: 'capture', label: 'Session Capture' },
-  { key: 'manual', label: 'Manual Entry', disabled: true },
+  { key: 'manual', label: 'Manual Entry' },
   { key: 'security', label: 'Security' },
 ];
 
@@ -21,7 +21,7 @@ const SECURITY_POINTS = [
   { icon: ShieldAlert, title: 'Optional PIN Protection', body: 'Protect this profile with a PIN for an extra layer of security (coming in v2).' },
 ];
 
-const EMPTY_FORM = { name: '', projectId: '', environment: '', loginUrl: '', username: '' };
+const EMPTY_FORM = { name: '', projectId: '', environment: '', loginUrl: '', username: '', password: '' };
 
 // Credential Profile modal (modal-4 mockup). Session capture is not a
 // single request/response — `session.capture()` doesn't resolve until the
@@ -116,6 +116,32 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
     }
   }
 
+  const canSaveManual = Boolean(
+    form.name.trim() && form.projectId && form.environment && form.loginUrl.trim() && form.username.trim() && form.password
+  );
+
+  async function handleSaveManual() {
+    if (!canSaveManual || saving) return;
+    setSaving(true);
+    try {
+      const savedMeta = await window.qaflow.session.saveManual({
+        name: form.name.trim(),
+        projectId: form.projectId,
+        environment: form.environment,
+        loginUrl: form.loginUrl.trim(),
+        username: form.username.trim(),
+        password: form.password,
+      });
+      toast(`Credential profile "${savedMeta?.name || form.name}" saved.`, 'success');
+      onClose();
+      onSaved?.(savedMeta);
+    } catch (e) {
+      toast(`Failed to save credential: ${e.message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <Dialog open={open} onClose={closeAndReset} className="max-w-4xl">
       <div className="flex items-start justify-between gap-4 border-b border-border p-5">
@@ -135,17 +161,13 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
         {TABS.map((t) => (
           <button
             key={t.key}
-            disabled={t.disabled}
-            title={t.disabled ? 'Manual entry arrives in v2' : undefined}
             onClick={() => setTab(t.key)}
             className={cn(
               'mr-6 border-b-2 py-3 text-sm font-medium transition-colors',
-              tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground',
-              t.disabled && 'cursor-not-allowed text-muted-foreground/50'
+              tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
             )}
           >
             {t.label}
-            {t.disabled && <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold">v2</span>}
           </button>
         ))}
       </div>
@@ -232,8 +254,29 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
                 onChange={(e) => setField('username', e.target.value)}
                 disabled={sessionStatus === 'waiting'}
               />
-              <p className="text-xs text-muted-foreground">Username or email for login (for reference only — the session itself is captured below).</p>
+              <p className="text-xs text-muted-foreground">
+                {tab === 'manual'
+                  ? 'Username or email for login.'
+                  : 'Username or email for login (for reference only — the session itself is captured below).'}
+              </p>
             </div>
+
+            {tab === 'manual' && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cp-password">
+                  Password <span className="text-danger">*</span>
+                </Label>
+                <Input
+                  id="cp-password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={form.password}
+                  onChange={(e) => setField('password', e.target.value)}
+                  autoComplete="new-password"
+                />
+                <p className="text-xs text-muted-foreground">Stored encrypted on this device. Never shown again after saving.</p>
+              </div>
+            )}
 
             {tab === 'capture' && (
               <>
@@ -365,9 +408,15 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
         <Button variant="outline" onClick={closeAndReset}>
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={!canSave || saving}>
-          {saving ? 'Saving…' : 'Save Profile'}
-        </Button>
+        {tab === 'manual' ? (
+          <Button onClick={handleSaveManual} disabled={!canSaveManual || saving}>
+            {saving ? 'Saving…' : 'Save Profile'}
+          </Button>
+        ) : (
+          <Button onClick={handleSave} disabled={!canSave || saving || tab === 'security'}>
+            {saving ? 'Saving…' : 'Save Profile'}
+          </Button>
+        )}
       </div>
     </Dialog>
   );

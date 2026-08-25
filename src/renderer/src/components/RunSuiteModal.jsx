@@ -9,17 +9,27 @@ import { Alert } from '@/components/ui/alert';
 import { projectVisual } from '@/lib/projectVisuals';
 import { fmtDate, fmtDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/lib/toast';
+
+const MAX_RETRIES = 3;
+
+const RECURRENCE_LABELS = { once: 'once', daily: 'every day', weekly: 'every week' };
 
 // Run Suite modal (modal-3 mockup). Kicking off the run and tracking its
 // progress is owned by the parent (`onRun`) — App.jsx's run manager keeps
 // that state alive after this modal closes/unmounts on navigation.
 export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun }) {
+  const toast = useToast();
   const [tab, setTab] = useState('now');
   const [environment, setEnvironment] = useState('');
   const [headless, setHeadless] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
   const [credentialProfileId, setCredentialProfileId] = useState('');
   const [credentials, setCredentials] = useState([]);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [recurrence, setRecurrence] = useState('once');
+  const [scheduling, setScheduling] = useState(false);
 
   useEffect(() => {
     if (!open || !suite) return;
@@ -28,6 +38,9 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
     setHeadless(true);
     setRetryCount(0);
     setCredentialProfileId('');
+    setScheduleDate('');
+    setScheduleTime('');
+    setRecurrence('once');
   }, [open, suite, project]);
 
   useEffect(() => {
@@ -59,8 +72,48 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
       environment,
       headless,
       credentialProfileId: credentialProfileId || undefined,
+      retries: retryCount,
     });
     onClose();
+  }
+
+  const scheduleAtIso = useMemo(() => {
+    if (!scheduleDate || !scheduleTime) return null;
+    const [year, month, day] = scheduleDate.split('-').map(Number);
+    const [hh, mm] = scheduleTime.split(':').map(Number);
+    if ([year, month, day, hh, mm].some((n) => Number.isNaN(n))) return null;
+    return new Date(year, month - 1, day, hh, mm).toISOString();
+  }, [scheduleDate, scheduleTime]);
+
+  const canSchedule = Boolean(environment && scheduleAtIso);
+
+  async function handleSchedule() {
+    if (!canSchedule || scheduling) return;
+    setScheduling(true);
+    try {
+      const now = new Date().toISOString();
+      await window.qaflow.schedules.save({
+        id: `sched-${crypto.randomUUID()}`,
+        suiteId: suite.id,
+        projectId: suite.projectId,
+        name: suite.name,
+        environment,
+        headless: true,
+        credentialProfileId: credentialProfileId || undefined,
+        at: scheduleAtIso,
+        recurrence,
+        enabled: true,
+        nextRunAt: scheduleAtIso,
+        createdAt: now,
+        updatedAt: now,
+      });
+      toast('Scheduled', 'success');
+      onClose();
+    } catch (e) {
+      toast(`Failed to schedule run: ${e.message}`, 'error');
+    } finally {
+      setScheduling(false);
+    }
   }
 
   return (
@@ -159,15 +212,17 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
                   −
                 </Button>
                 <Input className="w-16 text-center" value={retryCount} readOnly />
-                <Button type="button" variant="outline" size="icon" onClick={() => setRetryCount((c) => c + 1)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setRetryCount((c) => Math.min(MAX_RETRIES, c + 1))}
+                  disabled={retryCount >= MAX_RETRIES}
+                >
                   +
                 </Button>
               </div>
-              {retryCount > 0 ? (
-                <p className="text-xs text-amber-600">Retries are coming in v2 — this run will still execute once.</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">Retry failed tests up to the specified count.</p>
-              )}
+              <p className="text-xs text-muted-foreground">Retry failed tests up to {MAX_RETRIES} times.</p>
             </div>
           </div>
 
@@ -206,16 +261,18 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-foreground">Date</label>
-                  <Input type="date" disabled />
+                  <Input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-foreground">Time</label>
-                  <Input type="time" disabled />
+                  <Input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-foreground">Recurrence</label>
-                  <Select disabled>
-                    <option>Weekly</option>
+                  <Select value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+                    <option value="once">Once</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
                   </Select>
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -225,7 +282,16 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
                   </Select>
                 </div>
               </div>
-              <Alert variant="info">Scheduling arrives in v2.</Alert>
+              <Alert variant="info">
+                {scheduleAtIso
+                  ? `Runs ${RECURRENCE_LABELS[recurrence]} starting ${fmtDate(scheduleAtIso)}.`
+                  : 'Pick a date and time to schedule this run.'}
+              </Alert>
+              <div className="flex justify-end">
+                <Button type="button" onClick={handleSchedule} disabled={!canSchedule || scheduling}>
+                  {scheduling ? 'Scheduling…' : 'Schedule Run'}
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -281,12 +347,11 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
         <Button variant="outline" onClick={onClose}>
           Cancel
         </Button>
-        <Button variant="outline" disabled title="Scheduling arrives in v2">
-          Schedule Run
-        </Button>
-        <Button onClick={handleRun} disabled={!environment}>
-          <Play className="h-4 w-4" /> Run Suite
-        </Button>
+        {tab === 'now' && (
+          <Button onClick={handleRun} disabled={!environment}>
+            <Play className="h-4 w-4" /> Run Suite
+          </Button>
+        )}
       </div>
     </Dialog>
   );

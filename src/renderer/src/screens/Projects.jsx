@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   Search,
-  ArrowUpDown,
   Plus,
   Upload,
   MoreVertical,
@@ -63,6 +62,7 @@ export function Projects({ data, onNewProject, startRun }) {
   const toast = useToast();
 
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [runTarget, setRunTarget] = useState(null);
@@ -73,7 +73,7 @@ export function Projects({ data, onNewProject, startRun }) {
   const [connectionStatus, setConnectionStatus] = useState({}); // `${projectId}:${envName}` -> 'connected'|'failed'
 
   const projectsWithMeta = useMemo(() => {
-    return projects
+    const rows = projects
       .filter((p) => p.name?.toLowerCase().includes(search.toLowerCase()))
       .map((p) => {
         const projectSuites = suites.filter((s) => s.projectId === p.id);
@@ -81,7 +81,15 @@ export function Projects({ data, onNewProject, startRun }) {
         const lastRun = [...projectRuns].sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))[0];
         return { project: p, suiteCount: projectSuites.length, lastRun };
       });
-  }, [projects, suites, runs, search]);
+
+    if (sortBy === 'updated') {
+      return rows.sort((a, b) => new Date(b.project.updatedAt || 0) - new Date(a.project.updatedAt || 0));
+    }
+    if (sortBy === 'suites') {
+      return rows.sort((a, b) => b.suiteCount - a.suiteCount);
+    }
+    return rows.sort((a, b) => (a.project.name || '').localeCompare(b.project.name || ''));
+  }, [projects, suites, runs, search, sortBy]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
 
@@ -198,12 +206,11 @@ export function Projects({ data, onNewProject, startRun }) {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
-                <button
-                  onClick={() => toast('Sorting arrives in v2.', 'info')}
-                  className="flex h-9 w-9 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-accent"
-                >
-                  <ArrowUpDown className="h-4 w-4" />
-                </button>
+                <Select className="w-44" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                  <option value="name">Name A–Z</option>
+                  <option value="updated">Recently updated</option>
+                  <option value="suites">Most suites</option>
+                </Select>
               </div>
             </div>
 

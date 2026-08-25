@@ -62,6 +62,10 @@ function useRunManager(reload) {
     const unsubscribe = window.qaflow.on('run:progress', (event) => {
       setActiveRun((run) => {
         if (!run || run.suiteId !== event.suiteId) return run;
+        // index -1 marks the manual-login phase (runner.js) — it isn't one
+        // of the suite's own steps, so it gets a friendly label but doesn't
+        // count toward the step progress bar.
+        if (event.index === -1) return { ...run, currentStepName: 'Logging in…' };
         if (event.type === 'step-start') return { ...run, currentStepName: event.name };
         if (event.type === 'step-end') return { ...run, completedSteps: run.completedSteps + 1, currentStepName: event.name };
         return run;

@@ -69,6 +69,9 @@ export function Credentials({ data }) {
                 <div className="flex items-center gap-2">
                   <span className="truncate font-semibold text-foreground">{c.name}</span>
                   <span className="rounded-full bg-success-bg px-2 py-0.5 text-xs font-medium text-success">Active</span>
+                  <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    {c.mode === 'manual' ? 'Manual' : 'Session'}
+                  </span>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span>{projectsById[c.projectId]?.name || 'Unknown project'}</span>
