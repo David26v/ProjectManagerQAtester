@@ -3,3 +3,5 @@ qaflow-data/
 *.log
 .superpowers/
 src/renderer/dist/
+.env
+.env.*
