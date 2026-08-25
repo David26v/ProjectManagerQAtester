@@ -127,7 +127,7 @@ export function Dashboard({ data, onNewProject }) {
   }, [filteredRuns, suites, projectsById]);
 
   function handleNewRun() {
-    toast('Pick a suite to run — coming in the Test Suites screen.', 'info');
+    navigate('/suites');
   }
 
   return (

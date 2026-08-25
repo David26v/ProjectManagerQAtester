@@ -105,6 +105,7 @@ function registerIpc({ store, getMainWindow }) {
         environment: resolvedEnvironment,
         storageStatePath,
         headless,
+        triggeredBy: 'manual',
         onProgress: (event) => send('run:progress', { suiteId, ...event }),
       });
     } finally {
@@ -287,6 +288,7 @@ function registerIpc({ store, getMainWindow }) {
     const run = store.getRun(runId);
     if (!run) throw new Error(`Run "${runId}" not found`);
     const project = store.getProject(run.projectId);
+    if (!project) throw new Error('Project not found for this run');
     return generateTicketText(run, project);
   });
 
@@ -294,6 +296,7 @@ function registerIpc({ store, getMainWindow }) {
     const run = store.getRun(runId);
     if (!run) throw new Error(`Run "${runId}" not found`);
     const project = store.getProject(run.projectId);
+    if (!project) throw new Error('Project not found for this run');
     return store.saveTicket(ticketFromRun(run, project));
   });
 

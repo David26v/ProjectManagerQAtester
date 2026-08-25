@@ -110,7 +110,7 @@ function Screen({ route, data, onNewProject, startRun }) {
 
   if (top === 'projects') {
     if (second) return <ProjectDetail id={second} data={data} />;
-    return <Projects data={data} onNewProject={onNewProject} />;
+    return <Projects data={data} onNewProject={onNewProject} startRun={startRun} />;
   }
 
   if (top === 'suites') {

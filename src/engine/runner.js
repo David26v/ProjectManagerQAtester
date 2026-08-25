@@ -61,7 +61,16 @@ async function runStep(page, step, targetUrl) {
   }
 }
 
-async function runSuite({ store, suite, project, environment, storageStatePath = null, headless = true, onProgress = null }) {
+async function runSuite({
+  store,
+  suite,
+  project,
+  environment,
+  storageStatePath = null,
+  headless = true,
+  onProgress = null,
+  triggeredBy = 'manual',
+}) {
   const targetUrl = (environment && environment.baseUrl) || project.baseUrl;
   const runId = `run-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
   const dir = store.runDir(runId);
@@ -170,7 +179,7 @@ async function runSuite({ store, suite, project, environment, storageStatePath =
     startedAt,
     finishedAt: new Date().toISOString(),
     status,
-    triggeredBy: 'manual',
+    triggeredBy,
     steps,
     consoleErrors,
     networkFailures,

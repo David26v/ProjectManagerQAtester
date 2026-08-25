@@ -279,7 +279,7 @@ export function Suites({ data, route, startRun }) {
           <p className="mt-1 text-sm text-muted-foreground">Manage your test suites, and record new tests.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => toast('Import Suite is coming in a later task.', 'info')}>
+          <Button variant="outline" onClick={() => toast('Suite import arrives in v2.', 'info')}>
             <Upload className="h-4 w-4" /> Import Suite
           </Button>
           <Button

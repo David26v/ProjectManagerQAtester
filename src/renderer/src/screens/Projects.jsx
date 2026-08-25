@@ -20,6 +20,7 @@ import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { StatusPill } from '@/components/StatusPill';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { RunSuiteModal } from '@/components/RunSuiteModal';
 import { projectVisual, envColorClass, envDotClass } from '@/lib/projectVisuals';
 import { timeAgo, fmtDate } from '@/lib/format';
 import { navigate } from '@/hooks/useHashRoute';
@@ -57,13 +58,14 @@ function ComparisonCell({ value }) {
   return <span className="text-foreground">{value}</span>;
 }
 
-export function Projects({ data, onNewProject }) {
+export function Projects({ data, onNewProject, startRun }) {
   const { projects, suites, runs, reload } = data;
   const toast = useToast();
 
   const [search, setSearch] = useState('');
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [runTarget, setRunTarget] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || '');
   const [activeTab, setActiveTab] = useState('browser');
   const [envForm, setEnvForm] = useState({ name: '', baseUrl: '', browserProfile: '' });
@@ -95,21 +97,13 @@ export function Projects({ data, onNewProject }) {
     return runEvents.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 5);
   }, [runs, projects]);
 
-  async function handleRunProject(project) {
+  function handleRunProject(project) {
     const projectSuites = suites.filter((s) => s.projectId === project.id);
     if (projectSuites.length === 0) {
       toast(`${project.name} has no test suites yet — add one in Test Suites.`, 'info');
       return;
     }
-    const suite = projectSuites[0];
-    toast(`Running "${suite.name}" headless on ${project.defaultEnvironment || 'default environment'}…`, 'info');
-    try {
-      await window.qaflow.runs.run(suite.id, { environment: project.defaultEnvironment, headless: true });
-      toast(`Run finished for "${suite.name}".`, 'success');
-      reload();
-    } catch (e) {
-      toast(`Run failed: ${e.message}`, 'error');
-    }
+    setRunTarget(projectSuites[0]);
   }
 
   async function handleDelete(project) {
@@ -177,7 +171,7 @@ export function Projects({ data, onNewProject }) {
           <p className="mt-1 text-sm text-muted-foreground">Manage your QA targets, environments, and configurations in one place.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => toast('Import Config is coming in a later task.', 'info')}>
+          <Button variant="outline" onClick={() => toast('Config import arrives in v2.', 'info')}>
             <Upload className="h-4 w-4" /> Import Config
           </Button>
           <Button onClick={onNewProject}>
@@ -205,7 +199,7 @@ export function Projects({ data, onNewProject }) {
                   />
                 </div>
                 <button
-                  onClick={() => toast('Sorting is coming in a later task.', 'info')}
+                  onClick={() => toast('Sorting arrives in v2.', 'info')}
                   className="flex h-9 w-9 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-accent"
                 >
                   <ArrowUpDown className="h-4 w-4" />
@@ -486,6 +480,15 @@ export function Projects({ data, onNewProject }) {
         variant="danger"
         onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      <RunSuiteModal
+        open={Boolean(runTarget)}
+        onClose={() => setRunTarget(null)}
+        suite={runTarget}
+        project={runTarget ? projects.find((p) => p.id === runTarget.projectId) : null}
+        runs={runs}
+        onRun={(suite, opts) => startRun(suite, opts)}
       />
     </div>
   );

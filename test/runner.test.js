@@ -107,6 +107,50 @@ test('runSuite: failing suite captures failure screenshot and skips later steps'
   assert.equal(persisted.status, 'failed');
 });
 
+test('runSuite: defaults triggeredBy to "manual" when not provided', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const store = createStore(tmpBaseDir());
+  const project = { id: 'proj-1', name: 'Fixture', baseUrl: fixture.url };
+  const environment = { name: 'Local', baseUrl: fixture.url };
+  const suite = {
+    id: 'suite-4',
+    projectId: project.id,
+    name: 'Default trigger',
+    steps: [{ type: 'goto', name: 'Go to login', value: '/', timeout: 10000 }],
+  };
+
+  const report = await runSuite({ store, suite, project, environment, headless: true });
+
+  assert.equal(report.triggeredBy, 'manual');
+  const persisted = store.getRun(report.runId);
+  assert.equal(persisted.triggeredBy, 'manual');
+});
+
+test('runSuite: threads a non-default triggeredBy option into the persisted report', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const store = createStore(tmpBaseDir());
+  const project = { id: 'proj-1', name: 'Fixture', baseUrl: fixture.url };
+  const environment = { name: 'Local', baseUrl: fixture.url };
+  const suite = {
+    id: 'suite-5',
+    projectId: project.id,
+    name: 'API trigger',
+    steps: [{ type: 'goto', name: 'Go to login', value: '/', timeout: 10000 }],
+  };
+
+  const report = await runSuite({ store, suite, project, environment, headless: true, triggeredBy: 'api' });
+
+  assert.equal(report.triggeredBy, 'api');
+
+  // Round-trips through the store, not just the in-memory return value.
+  const persisted = store.getRun(report.runId);
+  assert.equal(persisted.triggeredBy, 'api');
+});
+
 test('runSuite: console errors and >=400 responses are captured as consoleErrors', async (t) => {
   const fixture = await startFixtureServer();
   t.after(() => fixture.close());

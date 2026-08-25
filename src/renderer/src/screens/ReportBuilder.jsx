@@ -30,11 +30,31 @@ function defaultSelection(run) {
 }
 
 export function ReportBuilder({ id, data }) {
-  const { projects, runs } = data;
+  const { projects, runs: cachedRuns } = data;
   const toast = useToast();
 
-  const run = runs.find((r) => r.runId === id);
+  // The app-wide `data.runs` cache can be stale — a previous visit to this
+  // screen may have written a newer `reportSelection` to disk than what's
+  // cached. Seed the initial paint from the cache (fast, no flash of empty
+  // state) but re-fetch the run fresh on mount and treat that as the
+  // authoritative source — otherwise re-entering this screen can seed
+  // selection state from a stale cache and the next edit flushes that
+  // stale state back to disk, silently reverting a saved selection.
+  const [freshRun, setFreshRun] = useState(null);
+  const cachedRun = cachedRuns.find((r) => r.runId === id);
+  const run = freshRun && freshRun.runId === id ? freshRun : cachedRun;
   const project = run ? projects.find((p) => p.id === run.projectId) : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    setFreshRun(null);
+    window.qaflow.runs.get(id).then((r) => {
+      if (!cancelled) setFreshRun(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const [selection, setSelection] = useState(() => (run ? defaultSelection(run) : { selectedMediaIds: [], notes: {} }));
   const [mediaTab, setMediaTab] = useState('all');
@@ -55,6 +75,10 @@ export function ReportBuilder({ id, data }) {
   const saveTimer = useRef(null);
   const initialLoad = useRef(true);
 
+  // Reseed on every `run` object change, not just `run.runId` — the fresh
+  // fetch above resolves to a new object with the same runId, and it must
+  // re-seed selection/title/etc from that authoritative copy rather than
+  // leaving the (possibly stale) cache-seeded state in place.
   useEffect(() => {
     if (!run) return;
     setSelection(defaultSelection(run));
@@ -64,7 +88,7 @@ export function ReportBuilder({ id, data }) {
     setReproSteps(stepsUpToFailure(run).map((s) => s.name));
     initialLoad.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run?.runId]);
+  }, [run]);
 
   useEffect(() => {
     if (!run) return undefined;

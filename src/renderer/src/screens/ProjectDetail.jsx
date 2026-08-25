@@ -157,7 +157,7 @@ export function ProjectDetail({ id, data }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => toast('Editing project details is coming in a later task.', 'info')}>
+          <Button variant="outline" onClick={() => toast('Project detail editing arrives in v2.', 'info')}>
             <Pencil className="h-4 w-4" /> Edit Project
           </Button>
           <Button onClick={runFirstSuite}>
@@ -182,7 +182,7 @@ export function ProjectDetail({ id, data }) {
 
       {tab !== 'Overview' ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border p-14 text-center">
-          <p className="text-sm text-muted-foreground">The {tab} tab is coming in a later task.</p>
+          <p className="text-sm text-muted-foreground">The {tab} tab arrives in v2.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">

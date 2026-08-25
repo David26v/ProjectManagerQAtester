@@ -58,9 +58,11 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
     onClose();
   }
 
+  const canCapture = Boolean(form.name.trim() && form.projectId && form.environment && form.loginUrl.trim());
+
   async function captureSession() {
-    if (!form.loginUrl.trim()) {
-      toast('Enter a login URL first.', 'warning');
+    if (!canCapture) {
+      toast('Fill in Profile Name, Linked Project, Environment, and Login URL before capturing.', 'warning');
       return;
     }
     setSessionStatus('waiting');
@@ -245,11 +247,22 @@ export function CredentialModal({ open, onClose, projects = [], defaultProjectId
                       <p className="text-sm text-muted-foreground">Launch a browser to sign in and capture your authenticated session.</p>
                     </div>
                   </div>
-                  <Button variant="outline" onClick={captureSession} disabled={sessionStatus === 'waiting'} className="shrink-0">
+                  <Button
+                    variant="outline"
+                    onClick={captureSession}
+                    disabled={sessionStatus === 'waiting' || !canCapture}
+                    title={!canCapture ? 'Fill in Profile Name, Linked Project, Environment, and Login URL first.' : undefined}
+                    className="shrink-0"
+                  >
                     {sessionStatus === 'waiting' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
                     Capture Session
                   </Button>
                 </div>
+                {!canCapture && sessionStatus === 'idle' && (
+                  <p className="-mt-2 text-xs text-muted-foreground">
+                    Fill in Profile Name, Linked Project, Environment, and Login URL to enable capture.
+                  </p>
+                )}
 
                 <div className="rounded-lg border border-border p-4">
                   {sessionStatus === 'waiting' && (
