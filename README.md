@@ -33,5 +33,15 @@ app's real `qaflow-data/` storage.
 
 ## Status
 
-Early scaffold — storage layer only. Recorder, runner, Electron shell, and
-REST API land in subsequent tasks.
+v1 feature-complete. All ten build tasks landed:
+
+- **Storage & engine** — local JSON + file store (projects, suites, runs, credentials, tickets, settings), Playwright suite runner with screenshot/video/console/network capture, browser recorder, headed login-session capture with encrypted `storageState`.
+- **Exporters** — Excel report export, Jira-style ticket text generator, "Send to David" zip bundle.
+- **Local REST API + CLI** — `express` server bound to `127.0.0.1`, `bin/qaflow.js` (`run` / `status` / `report` commands).
+- **Electron shell** — contextBridge `window.qaflow` bridge, `qaflow-media://` protocol for evidence playback, `--smoke` boot check.
+- **Renderer (React + Tailwind v4 + hand-vendored shadcn primitives)**:
+  - Dashboard, Projects (+ environment connection), Project Detail, Test Suites & Recorder, Suite Detail, Credentials.
+  - Runs, Run Details & Diagnostics, Media Selection & Report Builder (evidence preview, Generate Report).
+  - **Kanban Board** — filterable 5-column bug tracker (Backlog/Ready for QA/In Progress/Blocked/Done) with drag-and-drop status changes, per-column quick-add, Board Insights (aging + weekly throughput), Recent Updates.
+  - **Ticket Detail** — description, repro steps, evidence thumbnails, console/network diagnostics pulled from the linked run, comment thread, persisted checklist, status workflow stepper, labels editor, linked run.
+  - **Settings** — profile (name/role), local API port + CLI example, data folder info, About, and a Developer-only Diagnostics card.

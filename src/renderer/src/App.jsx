@@ -12,6 +12,9 @@ import { Runs } from '@/screens/Runs';
 import { RunDetail } from '@/screens/RunDetail';
 import { ReportBuilder } from '@/screens/ReportBuilder';
 import { Credentials } from '@/screens/Credentials';
+import { Kanban } from '@/screens/Kanban';
+import { TicketDetail } from '@/screens/TicketDetail';
+import { Settings } from '@/screens/Settings';
 import { ToastProvider, useToast } from '@/lib/toast';
 import { useHashRoute, navigate } from '@/hooks/useHashRoute';
 
@@ -20,20 +23,22 @@ function useAppData() {
     projects: [],
     suites: [],
     runs: [],
+    tickets: [],
     settings: {},
     version: '',
     loaded: false,
   });
 
   const reload = useCallback(async () => {
-    const [projects, suites, runs, settings, version] = await Promise.all([
+    const [projects, suites, runs, tickets, settings, version] = await Promise.all([
       window.qaflow.projects.list(),
       window.qaflow.suites.list(),
       window.qaflow.runs.list(),
+      window.qaflow.tickets.list(),
       window.qaflow.settings.get(),
       window.qaflow.app.version(),
     ]);
-    setState({ projects, suites, runs, settings, version, loaded: true });
+    setState({ projects, suites, runs, tickets, settings, version, loaded: true });
   }, []);
 
   useEffect(() => {
@@ -121,13 +126,22 @@ function Screen({ route, data, onNewProject, startRun }) {
     return <Runs data={data} startRun={startRun} />;
   }
 
+  if (top === 'kanban') {
+    if (second) return <TicketDetail id={second} data={data} startRun={startRun} />;
+    return <Kanban data={data} />;
+  }
+
+  if (top === 'settings') return <Settings data={data} />;
+
   switch (top) {
-    case 'kanban':
-      return <EmptyScreen title="Kanban Board" subtitle="Bug ticket board — coming in a later task." />;
     case 'reports':
-      return <EmptyScreen title="Reports" subtitle="Report export and bundling — coming in a later task." />;
-    case 'settings':
-      return <EmptyScreen title="Settings" subtitle="App preferences — coming in a later task." />;
+      // No dedicated Reports screen exists in the spec/mockups — report
+      // generation lives at `#/runs/:id/report` (Report Builder, Task 9),
+      // which needs a run in context. This nav item stays a lightweight
+      // pointer rather than a duplicate of the Runs table.
+      return (
+        <EmptyScreen title="Reports" subtitle="Report generation lives inside a run — open a run from Runs and use Build Report / Generate Report there." />
+      );
     default:
       return <EmptyScreen title="Not found" subtitle={`No screen registered for "#/${route.path}".`} />;
   }

@@ -14,6 +14,15 @@ export function fmtDate(iso) {
   });
 }
 
+// Compact "May 15" form used on kanban cards / linked-run rows where a full
+// timestamp would crowd the layout.
+export function fmtShortDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export function timeAgo(iso) {
   if (!iso) return '—';
   const then = new Date(iso).getTime();

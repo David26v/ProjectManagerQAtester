@@ -7,19 +7,27 @@ const STYLES = {
   passed: 'bg-success-bg text-success',
   connected: 'bg-success-bg text-success',
   scheduled: 'bg-success-bg text-success',
+  done: 'bg-success-bg text-success',
   failed: 'bg-danger-bg text-danger',
+  blocked: 'bg-danger-bg text-danger',
   skipped: 'bg-warning-bg text-amber-800',
   running: 'bg-accent text-accent-foreground',
+  in_progress: 'bg-accent text-accent-foreground',
+  ready: 'bg-accent text-accent-foreground',
+  backlog: 'bg-secondary text-muted-foreground',
   'not connected': 'bg-secondary text-muted-foreground',
 };
 
-export function StatusPill({ status, className }) {
+// `label` overrides the auto-capitalized text shown for `status` — needed
+// for keys like `in_progress`/`ready` (kanban ticket statuses) whose display
+// text ("In Progress", "Ready for QA") doesn't just capitalize the key.
+export function StatusPill({ status, label, className }) {
   const key = String(status || '').toLowerCase();
   const style = STYLES[key] || 'bg-secondary text-muted-foreground';
-  const label = status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown';
+  const text = label || (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown');
   return (
     <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', style, className)}>
-      {label}
+      {text}
     </span>
   );
 }
