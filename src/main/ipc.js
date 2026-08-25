@@ -84,7 +84,22 @@ function isAuthExempt(channel) {
   return AUTH_EXEMPT_CHANNELS.has(channel) || AUTH_EXEMPT_PREFIXES.some((p) => channel.startsWith(p));
 }
 
-function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => null, supabase = null, auth = null }) {
+function registerIpc({
+  store,
+  getMainWindow,
+  updates,
+  getBrowserStatus = () => null,
+  supabase = null,
+  auth = null,
+  // Defaults to the plain (unbuffered) `send()` defined just below so any
+  // caller that doesn't pass this (none currently — main.js always does)
+  // still gets a working, if racy, `auth:changed` push. main.js passes its
+  // own `sendAuthStatus`, which buffers the last status and re-flushes it
+  // on `did-finish-load` — same event-drop race `browser:status`/
+  // `updates:status` already guard against; auth restore can finish before
+  // the renderer's listener mounts.
+  notifyAuthStatus = null,
+}) {
   function send(channel, payload) {
     const win = getMainWindow();
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -130,7 +145,7 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
     return true;
   });
   if (auth) {
-    auth.onChange((status) => send('auth:changed', status));
+    auth.onChange((status) => (notifyAuthStatus || ((s) => send('auth:changed', s)))(status));
   }
 
   // Count of runs currently executing via `executeRun` — incremented for

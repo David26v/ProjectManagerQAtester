@@ -70,7 +70,7 @@ function ticketFromRun(run, project, { reporter } = {}) {
 
   return {
     title: `[${run.suiteName}] ${failingStep ? `${failingStep.name} fails` : 'Run failed'}`,
-    description: generateTicketText(run, project),
+    description: generateTicketText(run, project, { reporter }),
     severity: deriveSeverity(run),
     status: 'backlog',
     projectId: project.id,

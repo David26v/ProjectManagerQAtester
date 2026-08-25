@@ -164,6 +164,20 @@ function sendBrowserStatus(payload) {
   }
 }
 
+// Same event-drop race as `lastBrowserStatus` above, for `auth:changed`:
+// the restored-session listener (`auth.onChange`, wired in `whenReady`
+// below) can fire before the renderer's own listener mounts — auth restore
+// races the page's first paint the same way browser/update status do.
+// Buffered here and re-flushed on `did-finish-load` alongside the other two.
+let lastAuthStatus = null;
+
+function sendAuthStatus(payload) {
+  lastAuthStatus = payload;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('auth:changed', payload);
+  }
+}
+
 // Fire-and-forget: resolves/installs the Playwright Chromium build the
 // engine drives at runtime. Never awaited from `whenReady` — the app must
 // stay usable while a first-run download is in flight. Skipped entirely in
@@ -194,18 +208,20 @@ async function bootMediaBucket() {
 }
 
 // REST API boot is gated behind login when auth is wired: while logged out
-// it simply hasn't been started at all (closest thing to a 503 without
-// hand-rolling a "pending" express app). Once booted it is left running for
-// the rest of the process's life even across a later logout — restarting
-// express on every login/logout edge isn't worth the complexity for a
-// single-tenant local tool, and the brief explicitly allows this.
+// pre-first-boot it simply hasn't been started at all (connection refused —
+// acceptable per the brief). Once booted it is left running for the rest of
+// the process's life even across a later logout — restarting express on
+// every login/logout edge isn't worth the complexity for a single-tenant
+// local tool — but a per-request `isSignedIn` gate (wired below) still
+// 503s every route once a session that WAS active logs out, so "logged out"
+// is never silently served cloud data either way.
 let apiBooted = false;
 async function bootApiOnce() {
   if (apiBooted) return;
   apiBooted = true;
   const settings = store.getSettings();
   const port = (settings && settings.apiPort) || 4317;
-  const api = createApi({ store, runSuiteFn: runSuite });
+  const api = createApi({ store, runSuiteFn: runSuite, isSignedIn: auth ? () => auth.getUser() != null : undefined });
   try {
     await api.listen(port);
   } catch (e) {
@@ -234,6 +250,7 @@ app.whenReady().then(async () => {
     getBrowserStatus: () => lastBrowserStatus,
     supabase: supabaseAdmin,
     auth,
+    notifyAuthStatus: sendAuthStatus,
   });
 
   // Attach BEFORE awaiting bootApi() — `loadFile` above is unawaited, so if
@@ -259,6 +276,9 @@ app.whenReady().then(async () => {
       }
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('updates:status', updates.lastStatus());
+      }
+      if (lastAuthStatus && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('auth:changed', lastAuthStatus);
       }
     });
   }

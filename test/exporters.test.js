@@ -171,6 +171,27 @@ test('ticketFromRun builds a Ticket object matching the shared data model', () =
   assert.equal(ticket.comments.length, 0);
 });
 
+test('generateTicketText forwards the reporter option into the text', () => {
+  const dir = makeRunDir();
+  const run = makeRun(dir);
+
+  assert.match(generateTicketText(run, project), /Reporter: QA$/m);
+  assert.match(generateTicketText(run, project, { reporter: 'alice@astreus.dev' }), /Reporter: alice@astreus\.dev$/m);
+});
+
+test('ticketFromRun sets both the structured reporter field AND forwards it into the text description', () => {
+  const dir = makeRunDir();
+  const run = makeRun(dir);
+
+  const withDefault = ticketFromRun(run, project);
+  assert.equal(withDefault.reporter, 'QA');
+  assert.match(withDefault.description, /Reporter: QA$/m);
+
+  const withIdentity = ticketFromRun(run, project, { reporter: 'alice@astreus.dev' });
+  assert.equal(withIdentity.reporter, 'alice@astreus.dev');
+  assert.match(withIdentity.description, /Reporter: alice@astreus\.dev$/m);
+});
+
 test('createBundle zips report.json + all captured media when no selection', async () => {
   const dir = makeRunDir();
   const run = makeRun(dir);

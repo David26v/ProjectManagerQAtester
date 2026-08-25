@@ -18,9 +18,22 @@ function resolveEnvironment(project, environmentName) {
   return envs[0] || null;
 }
 
-function createApi({ store, runSuiteFn }) {
+function createApi({ store, runSuiteFn, isSignedIn }) {
   const app = express();
   app.use(express.json());
+
+  // `isSignedIn` is optional — omitted entirely (undefined), every existing
+  // engine test (which never wires an auth module) keeps working unchanged.
+  // When main.js wires it (`() => auth.getUser() != null`), every route
+  // below 503s while logged out — the REST API is otherwise left running
+  // once started (see main.js's `bootApiOnce` comment), so this is the only
+  // gate a logout actually gets.
+  if (isSignedIn) {
+    app.use((req, res, next) => {
+      if (!isSignedIn()) return res.status(503).json({ error: 'Not signed in' });
+      next();
+    });
+  }
 
   app.get('/projects', async (req, res) => {
     res.json(await store.listProjects());
