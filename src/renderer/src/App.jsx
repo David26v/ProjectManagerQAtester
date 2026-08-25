@@ -4,6 +4,7 @@ import { EmptyScreen } from '@/components/EmptyScreen';
 import { NewProjectModal } from '@/components/NewProjectModal';
 import { RunProgressBanner } from '@/components/RunProgressBanner';
 import { UpdateReadyBanner } from '@/components/UpdateReadyBanner';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Dashboard } from '@/screens/Dashboard';
 import { Projects } from '@/screens/Projects';
 import { ProjectDetail } from '@/screens/ProjectDetail';
@@ -207,6 +208,20 @@ function AppShell() {
   const { activeRun, startRun, dismissActiveRun } = useRunManager(data.reload);
   useBrowserBootstrapListener();
   const { readyVersion, dismiss: dismissUpdateReady } = useUpdateReadyListener();
+  const [confirmRestartOpen, setConfirmRestartOpen] = useState(false);
+
+  // A run in flight is driving a real Playwright process mid-write (video,
+  // screenshots, report.json) — quitAndInstall() force-kills the whole app,
+  // so restarting while `activeRun` is set needs an explicit "abort it?"
+  // confirmation instead of installing straight away. The button itself
+  // stays enabled either way — the user should still be able to choose.
+  function handleRestartClick() {
+    if (activeRun) {
+      setConfirmRestartOpen(true);
+      return;
+    }
+    window.qaflow.updates.install();
+  }
 
   return (
     <>
@@ -235,8 +250,18 @@ function AppShell() {
       <RunProgressBanner run={activeRun} onDismiss={dismissActiveRun} />
       <UpdateReadyBanner
         version={readyVersion}
-        onInstall={() => window.qaflow.updates.install()}
+        onInstall={handleRestartClick}
         onDismiss={dismissUpdateReady}
+      />
+
+      <ConfirmDialog
+        open={confirmRestartOpen}
+        title="A test run is in progress"
+        description="Restarting now will abort it. Restart anyway?"
+        confirmLabel="Restart anyway"
+        variant="danger"
+        onConfirm={() => window.qaflow.updates.install()}
+        onClose={() => setConfirmRestartOpen(false)}
       />
     </>
   );
