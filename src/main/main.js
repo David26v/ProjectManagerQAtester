@@ -25,10 +25,22 @@ const store = createStore(baseDir);
 
 let mainWindow = null;
 
+// A legal `runId` is a bare directory-name segment — no `/`, `\`, or `..`.
+// This must be checked BEFORE calling `store.runDir(runId)`: `path.join`
+// normalizes `..` segments, so a hostname of `..` would otherwise resolve
+// `runDir` itself to the qaflow-data root, and the relPath containment
+// check below would then trivially pass against that already-escaped dir
+// — leaking settings.json / credentials / other runs to the renderer.
+const SAFE_RUN_ID = /^[A-Za-z0-9_-]+$/;
+
 function registerMediaProtocol() {
   protocol.handle('qaflow-media', (request) => {
     const url = new URL(request.url);
     const runId = url.hostname;
+    if (!SAFE_RUN_ID.test(runId)) {
+      return new Response('Forbidden', { status: 403 });
+    }
+
     // Leading slash on pathname — strip it, then reject any traversal
     // outside the run directory (e.g. `../../secrets.json`).
     const relPath = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
@@ -80,14 +92,19 @@ app.whenReady().then(async () => {
   registerMediaProtocol();
   mainWindow = createWindow();
   registerIpc({ store, getMainWindow: () => mainWindow });
-  await bootApi();
 
+  // Attach BEFORE awaiting bootApi() — `loadFile` above is unawaited, so if
+  // the static dist/index.html finishes loading while bootApi() is still
+  // in flight, a listener attached only after that await would miss the
+  // event entirely and `--smoke` would hang forever.
   if (isSmoke) {
     mainWindow.webContents.once('did-finish-load', () => {
       console.log('SMOKE OK');
       app.exit(0);
     });
   }
+
+  await bootApi();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
