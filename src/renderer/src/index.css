@@ -24,6 +24,14 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-success-bg: hsl(var(--success-bg));
+  --color-danger: hsl(var(--danger));
+  --color-danger-foreground: hsl(var(--danger-foreground));
+  --color-danger-bg: hsl(var(--danger-bg));
+  --color-warning: hsl(var(--warning));
+  --color-warning-bg: hsl(var(--warning-bg));
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -51,6 +59,16 @@
   --input: 220 13% 91%;
   --ring: 221 83% 53%;
   --radius: 0.65rem;
+
+  /* status colors — pass/fail/warn, used by StatusPill + stat cards */
+  --success: 142 71% 35%;
+  --success-foreground: 0 0% 100%;
+  --success-bg: 142 76% 96%;
+  --danger: 0 72% 51%;
+  --danger-foreground: 0 0% 100%;
+  --danger-bg: 0 86% 97%;
+  --warning: 38 92% 50%;
+  --warning-bg: 48 96% 95%;
 }
 
 * {
@@ -61,4 +79,17 @@ body {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: var(--font-sans);
+}
+
+/* Thin, unobtrusive scrollbars matching the mockups' clean surfaces. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(220 13% 85%);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
