@@ -190,7 +190,17 @@ every non-archived suite tagged `smoke` for that project.
   Diagnostics card with raw report access).
 - **API** — the local API port and a copy-ready CLI example.
 - **Data** — where everything lives on disk (see below).
-- **About** — app/Electron versions.
+- **About** — app/Electron versions, and Updates (see below).
+
+## 11. Updates
+
+An installed copy of QA Flow checks for a new version automatically on
+launch and every few hours, downloads it in the background, and shows a
+"Restart to apply" banner once it's ready — just click **Restart**. You can
+also trigger a manual check from **Settings → About → Check for updates**.
+
+If you're running from a git checkout instead of an installed build, updates
+don't apply — pull the latest code with `git pull` instead.
 
 ## Where your data lives
 

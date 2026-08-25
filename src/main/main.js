@@ -15,6 +15,7 @@ const { runSuite } = require('../engine/runner.js');
 const { registerIpc } = require('./ipc.js');
 const { createScheduler } = require('./scheduler.js');
 const { createBrowserBootstrap } = require('./browser-bootstrap.js');
+const { createUpdates } = require('./updates.js');
 
 const isSmoke = process.argv.includes('--smoke');
 
@@ -130,7 +131,8 @@ async function bootApi() {
 app.whenReady().then(async () => {
   registerMediaProtocol();
   mainWindow = createWindow();
-  const { executeRun } = registerIpc({ store, getMainWindow: () => mainWindow });
+  const updates = createUpdates({ getMainWindow: () => mainWindow });
+  const { executeRun } = registerIpc({ store, getMainWindow: () => mainWindow, updates });
 
   // Attach BEFORE awaiting bootApi() — `loadFile` above is unawaited, so if
   // the static dist/index.html finishes loading while bootApi() is still
@@ -146,10 +148,15 @@ app.whenReady().then(async () => {
     // Guards the event-drop race described above `sendBrowserStatus` — by
     // the time `did-finish-load` fires the renderer's listener is mounted,
     // so re-flush whatever status was last known (a no-op if nothing has
-    // been decided yet, or if the live send already got through).
+    // been decided yet, or if the live send already got through). Same
+    // pattern for updates:status — `createUpdates` pushes on its own timers
+    // and boot check, which can beat the renderer's listener mount too.
     mainWindow.webContents.once('did-finish-load', () => {
       if (lastBrowserStatus && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('browser:status', lastBrowserStatus);
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('updates:status', updates.lastStatus());
       }
     });
   }

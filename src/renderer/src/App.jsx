@@ -3,6 +3,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { EmptyScreen } from '@/components/EmptyScreen';
 import { NewProjectModal } from '@/components/NewProjectModal';
 import { RunProgressBanner } from '@/components/RunProgressBanner';
+import { UpdateReadyBanner } from '@/components/UpdateReadyBanner';
 import { Dashboard } from '@/screens/Dashboard';
 import { Projects } from '@/screens/Projects';
 import { ProjectDetail } from '@/screens/ProjectDetail';
@@ -138,6 +139,24 @@ function useBrowserBootstrapListener() {
   }, [toast]);
 }
 
+// Surfaces the main process's electron-updater state. Only `ready` renders
+// anything (the persistent restart banner) — `checking`/`downloading`/`idle`
+// are silent here and instead read live from Settings' About card, which
+// polls `updates.status()` on demand. `dev` (unpackaged checkout) never
+// fires this listener at all since main.js's dev stub never pushes.
+function useUpdateReadyListener() {
+  const [readyVersion, setReadyVersion] = useState(null);
+
+  useEffect(() => {
+    const unsubscribe = window.qaflow.on('updates:status', (payload) => {
+      if (payload?.state === 'ready') setReadyVersion(payload.version);
+    });
+    return unsubscribe;
+  }, []);
+
+  return { readyVersion, dismiss: () => setReadyVersion(null) };
+}
+
 function Screen({ route, data, onNewProject, startRun }) {
   const [top, second] = route.segments;
 
@@ -187,6 +206,7 @@ function AppShell() {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const { activeRun, startRun, dismissActiveRun } = useRunManager(data.reload);
   useBrowserBootstrapListener();
+  const { readyVersion, dismiss: dismissUpdateReady } = useUpdateReadyListener();
 
   return (
     <>
@@ -213,6 +233,11 @@ function AppShell() {
       />
 
       <RunProgressBanner run={activeRun} onDismiss={dismissActiveRun} />
+      <UpdateReadyBanner
+        version={readyVersion}
+        onInstall={() => window.qaflow.updates.install()}
+        onDismiss={dismissUpdateReady}
+      />
     </>
   );
 }

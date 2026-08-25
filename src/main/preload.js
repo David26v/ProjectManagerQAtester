@@ -11,7 +11,7 @@ function invoke(channel) {
   return (...args) => ipcRenderer.invoke(channel, ...args);
 }
 
-const PUSH_CHANNELS = new Set(['recorder:step', 'run:progress', 'schedules:fired', 'browser:status']);
+const PUSH_CHANNELS = new Set(['recorder:step', 'run:progress', 'schedules:fired', 'browser:status', 'updates:status']);
 
 contextBridge.exposeInMainWorld('qaflow', {
   projects: {
@@ -72,6 +72,11 @@ contextBridge.exposeInMainWorld('qaflow', {
     version: invoke('app:version'),
     mediaUrl: invoke('app:mediaUrl'),
     revealPath: invoke('app:revealPath'),
+  },
+  updates: {
+    status: invoke('updates:status'),
+    check: invoke('updates:check'),
+    install: invoke('updates:install'),
   },
   on(channel, callback) {
     if (!PUSH_CHANNELS.has(channel)) throw new Error(`Unknown qaflow event channel "${channel}"`);

@@ -25,11 +25,45 @@ export function Settings({ data }) {
   const [apiPort, setApiPort] = useState(String(DEFAULT_PORT));
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingApi, setSavingApi] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   useEffect(() => {
     setProfile({ userName: settings?.userName || '', role: settings?.role || 'QA' });
     setApiPort(String(settings?.apiPort || DEFAULT_PORT));
   }, [settings]);
+
+  // Initial read (also tells us `dev` vs packaged) plus live updates while
+  // this screen is mounted — a check kicked off elsewhere (boot, periodic
+  // timer) should still move the button's label along.
+  useEffect(() => {
+    window.qaflow.updates.status().then(setUpdateStatus);
+    const unsubscribe = window.qaflow.on('updates:status', setUpdateStatus);
+    return unsubscribe;
+  }, []);
+
+  async function checkForUpdates() {
+    setCheckingUpdate(true);
+    try {
+      const result = await window.qaflow.updates.check();
+      setUpdateStatus(result);
+      if (result.state === 'idle') toast('You are on the latest version.', 'info');
+      else if (result.state === 'error') toast(`Update check failed: ${result.error}`, 'error');
+    } catch (e) {
+      toast(`Update check failed: ${e.message}`, 'error');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
+
+  function updateStatusLabel() {
+    if (!updateStatus || updateStatus.state === 'dev') return 'Updates run in the installed app only';
+    if (checkingUpdate || updateStatus.state === 'checking') return 'Checking…';
+    if (updateStatus.state === 'downloading') return 'Downloading update…';
+    if (updateStatus.state === 'ready') return `Update v${updateStatus.version} ready — restart to apply`;
+    if (updateStatus.state === 'error') return `Update check failed: ${updateStatus.error}`;
+    return 'Up to date';
+  }
 
   async function saveProfile() {
     setSavingProfile(true);
@@ -176,6 +210,18 @@ export function Settings({ data }) {
             <div className="flex justify-between">
               <span className="text-muted-foreground">Total Runs</span>
               <span className="font-medium text-foreground">{runs?.length || 0}</span>
+            </div>
+            <div className="mt-2 flex flex-col gap-2 border-t border-border pt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start"
+                onClick={checkForUpdates}
+                disabled={!updateStatus || updateStatus.state === 'dev' || checkingUpdate || updateStatus.state === 'checking' || updateStatus.state === 'downloading'}
+              >
+                {checkingUpdate || updateStatus?.state === 'checking' ? 'Checking…' : 'Check for updates'}
+              </Button>
+              <p className="text-xs text-muted-foreground">{updateStatusLabel()}</p>
             </div>
           </div>
         </div>

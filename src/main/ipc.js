@@ -66,7 +66,7 @@ const KNOWN_STEP_TYPES = new Set([
   'assertText',
 ]);
 
-function registerIpc({ store, getMainWindow }) {
+function registerIpc({ store, getMainWindow, updates }) {
   function send(channel, payload) {
     const win = getMainWindow();
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -420,6 +420,11 @@ function registerIpc({ store, getMainWindow }) {
     shell.showItemInFolder(p);
     return true;
   });
+
+  // ---- updates ----
+  handle('updates:status', () => updates.status());
+  handle('updates:check', () => updates.check());
+  handle('updates:install', () => updates.quitAndInstall());
 
   // ---- schedules ----
   handle('schedules:list', () => store.listSchedules());

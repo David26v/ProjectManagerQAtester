@@ -37,6 +37,16 @@ app's real `qaflow-data/` storage.
   Review → Report loop, screen by screen, plus CLI/API automation.
 - [Architecture](docs/ARCHITECTURE.md) — engine / main / renderer layering,
   IPC surface, data layout, and the fixed run-report contract.
+- [Releasing](docs/RELEASING.md) — how to cut a versioned release that
+  installed copies auto-update to.
+
+## Updates
+
+Installed builds check GitHub Releases for a new version on launch and every
+few hours, download it automatically, and prompt to restart once it's ready
+(or trigger a manual check from Settings → About). A dev checkout (`npm
+start`) never auto-updates — pull with git instead. See
+[docs/RELEASING.md](docs/RELEASING.md) for how a release is cut.
 
 ## Status
 
