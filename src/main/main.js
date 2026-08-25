@@ -78,6 +78,23 @@ function createWindow() {
   return win;
 }
 
+// `ensureChromium()` can resolve (or fail) fast enough to race the
+// renderer's `browser:status` listener mount — `webContents.send()` doesn't
+// queue for a listener that isn't attached yet, so a send that happens
+// before React's `useEffect` subscribes is silently lost, which would
+// defeat the failure-toast contract. Buffering the last-sent payload here
+// and re-sending it once on `did-finish-load` (below) covers that: by the
+// time that event fires the page's scripts have already run and mounted
+// the listener, so whatever was last known is guaranteed to land.
+let lastBrowserStatus = null;
+
+function sendBrowserStatus(payload) {
+  lastBrowserStatus = payload;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('browser:status', payload);
+  }
+}
+
 // Fire-and-forget: resolves/installs the Playwright Chromium build the
 // engine drives at runtime. Never awaited from `whenReady` — the app must
 // stay usable while a first-run download is in flight. Skipped entirely in
@@ -85,16 +102,12 @@ function createWindow() {
 // the renderer finishes its first paint.
 function bootBrowser() {
   const bootstrap = createBrowserBootstrap({
-    onStatus: (status) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('browser:status', { status });
-      }
-    },
+    onStatus: (status) => sendBrowserStatus({ status }),
   });
 
   bootstrap.ensureChromium().then((result) => {
-    if (!result.ok && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('browser:status', {
+    if (!result.ok) {
+      sendBrowserStatus({
         status: 'error',
         error: `Browser install failed — recording/runs unavailable: ${result.error}`,
       });
@@ -130,6 +143,15 @@ app.whenReady().then(async () => {
     });
   } else {
     bootBrowser();
+    // Guards the event-drop race described above `sendBrowserStatus` — by
+    // the time `did-finish-load` fires the renderer's listener is mounted,
+    // so re-flush whatever status was last known (a no-op if nothing has
+    // been decided yet, or if the live send already got through).
+    mainWindow.webContents.once('did-finish-load', () => {
+      if (lastBrowserStatus && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('browser:status', lastBrowserStatus);
+      }
+    });
   }
 
   await bootApi();

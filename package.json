@@ -18,7 +18,11 @@
     "files": ["src/main/**", "src/engine/**", "src/renderer/dist/**", "bin/**", "package.json", "node_modules/**"],
     "asar": true,
     "asarUnpack": ["node_modules/playwright/**", "node_modules/playwright-core/**"],
-    "win": { "target": ["nsis"], "icon": "build/icon.ico" },
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.ico",
+      "signExecutable": false
+    },
     "nsis": { "oneClick": true, "perMachine": false },
     "publish": [{ "provider": "github", "owner": "David26v", "repo": "ProjectManagerQAtester" }]
   },
