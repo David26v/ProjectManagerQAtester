@@ -11,6 +11,7 @@ import { SuiteDetail } from '@/screens/SuiteDetail';
 import { Runs } from '@/screens/Runs';
 import { RunDetail } from '@/screens/RunDetail';
 import { ReportBuilder } from '@/screens/ReportBuilder';
+import { Reports } from '@/screens/Reports';
 import { Credentials } from '@/screens/Credentials';
 import { Kanban } from '@/screens/Kanban';
 import { TicketDetail } from '@/screens/TicketDetail';
@@ -137,18 +138,9 @@ function Screen({ route, data, onNewProject, startRun }) {
 
   if (top === 'settings') return <Settings data={data} />;
 
-  switch (top) {
-    case 'reports':
-      // No dedicated Reports screen exists in the spec/mockups — report
-      // generation lives at `#/runs/:id/report` (Report Builder, Task 9),
-      // which needs a run in context. This nav item stays a lightweight
-      // pointer rather than a duplicate of the Runs table.
-      return (
-        <EmptyScreen title="Reports" subtitle="Report generation lives inside a run — open a run from Runs and use Build Report / Generate Report there." />
-      );
-    default:
-      return <EmptyScreen title="Not found" subtitle={`No screen registered for "#/${route.path}".`} />;
-  }
+  if (top === 'reports') return <Reports data={data} />;
+
+  return <EmptyScreen title="Not found" subtitle={`No screen registered for "#/${route.path}".`} />;
 }
 
 // `#/suites` is shared by the Test Suites and Recorder nav items — Recorder

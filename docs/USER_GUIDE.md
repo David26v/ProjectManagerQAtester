@@ -28,7 +28,7 @@ A *project* is the app or site you test (e.g. "Web Dashboard",
 1. Go to **Test Suites** (or click **Recorder** in the sidebar — it jumps to
    the recorder panel).
 2. Enter the **URL** to start at, pick the **project**, and optionally pick a
-   **credential profile** (see §6) so the recording starts logged in.
+   **credential profile** (see §7) so the recording starts logged in.
 3. Click **Start Recording**. A real Chromium window opens — just use the app
    like a user: click, type, navigate.
 4. Every action appears live in the **Steps** list (goto, click, fill, press,
@@ -39,11 +39,15 @@ A *project* is the app or site you test (e.g. "Web Dashboard",
 Steps are stored as plain JSON — you can rename, reorder, or delete steps
 later from the **Suite Detail** page (click a suite card).
 
+**Import a suite** — on **Test Suites**, click **Import Suite** to load a
+previously exported suite JSON file from disk instead of recording it again.
+It's added to the project picked in the file's contents, ready to run.
+
 ## 3. Run a suite (Run)
 
 - From a suite card (or the Run button anywhere), the **Run Suite** dialog
-  lets you choose the **environment**, **headless or headed**, and an optional
-  **credential profile**.
+  lets you choose the **environment**, **headless or headed**, a **retry
+  count** (up to 3), and an optional **credential profile**.
 - Click **Run Suite** — you're taken to **Runs** and a live progress banner
   tracks each step. A toast announces Passed/Failed and opens the run detail.
 - Every run captures automatically:
@@ -52,7 +56,25 @@ later from the **Suite Detail** page (click a suite card).
   - all **console errors**,
   - all **network failures**.
 
-Runs can also be triggered without the UI — see §7 (CLI & API).
+Runs can also be triggered without the UI — see §9 (CLI & API).
+
+### Scheduling a run
+
+The **Schedule** tab in the same Run Suite dialog lets you queue a suite for
+later instead of running it now:
+
+1. Pick a **date** and **time**, and a **recurrence** — Once, Daily, or
+   Weekly.
+2. Click **Schedule Run**. The schedule (and any upcoming runs it produces)
+   shows up on the **Dashboard**'s Scheduled Runs card, where you can pause
+   (toggle) or delete it.
+
+**Schedules only fire while QA Flow is open.** There's no background service
+or OS-level task — if the app isn't running when a scheduled time arrives,
+that run is skipped. A one-time ("Once") schedule that already fired shows as
+"Completed" and can't be re-enabled; daily/weekly schedules keep computing
+their next occurrence as long as they stay enabled. Keep the app running (or
+re-open it before the scheduled time) for scheduled runs to actually happen.
 
 ## 4. Review a run (Review)
 
@@ -89,20 +111,52 @@ From a run, click **Build Report**:
 > preview; file exports and tickets use the run's recorded values. (Planned
 > for v2.)
 
-## 6. Credential profiles (logged-in testing)
+Once a run has report work started on it (you've opened Build Report and
+touched the media grid or a note), it shows up on the **Reports** screen —
+see §6.
+
+## 6. Reports screen
+
+**Reports** (sidebar) lists every run that has a report in progress: suite,
+project, status, how much evidence is selected, note count, and when it was
+last touched. It's a shortcut back into a report without hunting through
+Runs:
+
+- Click a row (or the report icon) to reopen **Build Report** for that run.
+- The Excel, JSON, and zip-bundle icons export directly from the row using
+  whatever media/notes are already saved on that run — no need to open the
+  builder first.
+- Stat chips at the top show **Total reports** and **This week**.
+- A run only appears here once report work has started on it — the empty
+  state points back at Build Report on the run.
+
+## 7. Credential profiles (logged-in testing)
 
 For apps behind a login, capture a session once instead of recording the login
-every time:
+every time. **Credentials** → **New Profile** has two ways to create a
+profile:
 
-1. Go to **Credentials** → **New Profile**.
-2. Fill in profile name, project, environment, login URL and username, then
+**Session Capture** (recommended when you don't want to store a password):
+
+1. Fill in profile name, project, environment, login URL and username, then
    click **Capture Session** — a real browser opens.
-3. Log in manually, then click **I've logged in — capture**. QA Flow stores
+2. Log in manually, then click **I've logged in — capture**. QA Flow stores
    the browser session **encrypted with your OS keychain** (never the
    password itself).
-4. Pick that profile in the Run dialog or Recorder to start authenticated.
 
-## 7. Kanban board (bug tracking)
+**Manual Entry** (when you'd rather store the credentials than a session):
+
+1. Switch to the **Manual Entry** tab and fill in profile name, project,
+   environment, login URL, username, and password.
+2. Click **Save Profile**. The password is **stored encrypted on this
+   device only** — it's never synced anywhere and never shown again after
+   saving. The Credentials list marks these profiles "Manual" (vs. "Session"
+   for captured logins).
+
+Either way, pick that profile in the Run dialog or Recorder to start
+authenticated.
+
+## 8. Kanban board (bug tracking)
 
 **Kanban Board** tracks tickets created from failed runs (or added by hand):
 
@@ -114,7 +168,7 @@ every time:
   evidence from the linked run, console/network diagnostics, comments, and a
   QA checklist.
 
-## 8. CLI & local API (automation)
+## 9. CLI & local API (automation)
 
 While the app is open, a REST API listens on `127.0.0.1:4317` (port
 configurable in **Settings**). The bundled CLI wraps it:
@@ -130,7 +184,7 @@ post-deploy hook. There is also a deploy webhook:
 `POST /webhooks/deploy-complete {"projectId": "...", "tag": "smoke"}` runs
 every non-archived suite tagged `smoke` for that project.
 
-## 9. Settings
+## 10. Settings
 
 - **Profile** — your name and role (Developer role reveals an extra
   Diagnostics card with raw report access).
