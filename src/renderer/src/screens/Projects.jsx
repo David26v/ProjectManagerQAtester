@@ -204,7 +204,10 @@ export function Projects({ data, onNewProject }) {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
-                <button className="flex h-9 w-9 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-accent">
+                <button
+                  onClick={() => toast('Sorting is coming in a later task.', 'info')}
+                  className="flex h-9 w-9 items-center justify-center rounded-md border border-input text-muted-foreground hover:bg-accent"
+                >
                   <ArrowUpDown className="h-4 w-4" />
                 </button>
               </div>

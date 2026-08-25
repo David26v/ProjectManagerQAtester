@@ -64,6 +64,14 @@ function Screen({ route, data, onNewProject }) {
   }
 }
 
+// `#/suites` is shared by the Test Suites and Recorder nav items — Recorder
+// highlights only when `?panel=recorder` is present, Test Suites otherwise.
+function activeNavKey(route) {
+  const top = route.segments[0] || 'dashboard';
+  if (top === 'suites' && route.query.panel === 'recorder') return 'recorder';
+  return top;
+}
+
 export default function App() {
   const route = useHashRoute();
   const data = useAppData();
@@ -73,7 +81,7 @@ export default function App() {
     <ToastProvider>
       <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
         <Sidebar
-          activeSegment={route.segments[0] || 'dashboard'}
+          activeSegment={activeNavKey(route)}
           userName={data.settings?.userName}
           userEmail={data.settings?.userEmail}
           version={data.version}

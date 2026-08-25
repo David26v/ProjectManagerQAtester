@@ -182,9 +182,7 @@ export function NewProjectModal({ open, onClose, onCreated }) {
               <p className="text-xs text-muted-foreground">Choose how this project will be used.</p>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="np-env">
-                Default Environment <span className="text-danger">*</span>
-              </Label>
+              <Label htmlFor="np-env">Default Environment</Label>
               <Select
                 id="np-env"
                 value={form.defaultEnvironment}
