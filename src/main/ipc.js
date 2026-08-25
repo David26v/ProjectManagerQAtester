@@ -192,7 +192,10 @@ function registerIpc({ store, getMainWindow }) {
 
     let storageStatePath = null;
     if (credentialProfileId) {
-      const { plaintext } = decryptCredential(store, credentialProfileId);
+      const { meta, plaintext } = decryptCredential(store, credentialProfileId);
+      if (meta.mode === 'manual') {
+        throw new Error("Manual-entry profiles can't seed the recorder — use a captured session profile");
+      }
       storageStatePath = writeTempStorageState(plaintext);
     }
 

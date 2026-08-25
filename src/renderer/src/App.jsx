@@ -67,6 +67,20 @@ function useRunManager(reload) {
         // of the suite's own steps, so it gets a friendly label but doesn't
         // count toward the step progress bar.
         if (event.index === -1) return { ...run, currentStepName: 'Logging in…' };
+        // A step-start for index 0 marks the beginning of a fresh attempt —
+        // either a retry of *this* run, or (same suiteId, different run
+        // entirely — e.g. a scheduled run of the suite the user is also
+        // running manually) another run's events bleeding in. Either way
+        // the progress bar should restart from 0, and we adopt whichever
+        // attempt just started as the one we're now tracking so its own
+        // step-end events count correctly.
+        if (event.type === 'step-start' && event.index === 0) {
+          return { ...run, completedSteps: 0, currentStepName: event.name, attempt: event.attempt };
+        }
+        // Once we've locked onto an attempt, ignore step events tagged with
+        // a different attempt — they belong to a retry we've moved past, or
+        // to an unrelated overlapping run of the same suite.
+        if (event.attempt !== undefined && run.attempt !== undefined && event.attempt !== run.attempt) return run;
         if (event.type === 'step-start') return { ...run, currentStepName: event.name };
         if (event.type === 'step-end') return { ...run, completedSteps: run.completedSteps + 1, currentStepName: event.name };
         return run;
@@ -83,6 +97,7 @@ function useRunManager(reload) {
         totalSteps: suite.steps?.length || 0,
         completedSteps: 0,
         currentStepName: null,
+        attempt: undefined,
       });
       toast(`Running "${suite.name}"…`, 'info');
       navigate('/runs');

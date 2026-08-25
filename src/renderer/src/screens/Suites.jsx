@@ -145,7 +145,10 @@ export function Suites({ data, route, startRun }) {
       return;
     }
     window.qaflow.session.list(recProjectId).then((list) => {
-      if (!cancelled) setRecCredentials(list || []);
+      // Manual-entry profiles can't seed the recorder (main rejects them —
+      // see recorder:start in ipc.js) — filter them out of the dropdown so
+      // picking one doesn't throw.
+      if (!cancelled) setRecCredentials((list || []).filter((c) => c.mode !== 'manual'));
     });
     return () => {
       cancelled = true;

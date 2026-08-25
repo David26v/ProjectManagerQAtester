@@ -117,6 +117,7 @@ async function runAttempt({
   onProgress,
   triggeredBy,
   manualLogin,
+  attempt,
 }) {
   const targetUrl = (environment && environment.baseUrl) || project.baseUrl;
   const runId = `run-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
@@ -129,6 +130,12 @@ async function runAttempt({
   const steps = [];
   const capturedMedia = [];
   let status = 'passed';
+
+  // Tags every progress event with which attempt (1-based) emitted it, so a
+  // listener watching a suite across retries — or across two independent
+  // runs of the same suite overlapping in time (e.g. a manual run and a
+  // scheduled run) — can tell events apart instead of blindly summing them.
+  const emit = onProgress ? (payload) => onProgress({ ...payload, attempt }) : null;
 
   const browser = await chromium.launch({ headless });
   let context;
@@ -156,17 +163,17 @@ async function runAttempt({
     let failed = false;
 
     if (manualLogin) {
-      if (onProgress) onProgress({ type: 'step-start', index: -1, name: 'Manual login' });
+      if (emit) emit({ type: 'step-start', index: -1, name: 'Manual login' });
       const startedStep = Date.now();
       try {
         await performManualLogin(page, manualLogin, DEFAULT_STEP_TIMEOUT);
         const durationMs = Date.now() - startedStep;
         steps.push({ name: 'Manual login', status: 'passed', durationMs });
-        if (onProgress) onProgress({ type: 'step-end', index: -1, name: 'Manual login', status: 'passed' });
+        if (emit) emit({ type: 'step-end', index: -1, name: 'Manual login', status: 'passed' });
       } catch (e) {
         const durationMs = Date.now() - startedStep;
         steps.push({ name: 'Manual login', status: 'failed', error: e.message, durationMs });
-        if (onProgress) onProgress({ type: 'step-end', index: -1, name: 'Manual login', status: 'failed', error: e.message });
+        if (emit) emit({ type: 'step-end', index: -1, name: 'Manual login', status: 'failed', error: e.message });
         failed = true;
         status = 'failed';
       }
@@ -177,18 +184,18 @@ async function runAttempt({
 
       if (failed) {
         steps.push({ name: step.name, status: 'skipped' });
-        if (onProgress) onProgress({ type: 'step-end', index, name: step.name, status: 'skipped' });
+        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'skipped' });
         continue;
       }
 
-      if (onProgress) onProgress({ type: 'step-start', index, name: step.name });
+      if (emit) emit({ type: 'step-start', index, name: step.name });
       const startedStep = Date.now();
 
       try {
         await runStep(page, step, targetUrl);
         const durationMs = Date.now() - startedStep;
         steps.push({ name: step.name, status: 'passed', durationMs });
-        if (onProgress) onProgress({ type: 'step-end', index, name: step.name, status: 'passed' });
+        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'passed' });
       } catch (e) {
         const durationMs = Date.now() - startedStep;
         const screenshotName = `${slug(step.name)}-${Date.now()}.png`;
@@ -201,7 +208,7 @@ async function runAttempt({
         }
 
         steps.push({ name: step.name, status: 'failed', error: e.message, screenshot: screenshotName, durationMs });
-        if (onProgress) onProgress({ type: 'step-end', index, name: step.name, status: 'failed', error: e.message });
+        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'failed', error: e.message });
 
         failed = true;
         status = 'failed';
@@ -284,6 +291,7 @@ async function runSuite({
       onProgress,
       triggeredBy,
       manualLogin,
+      attempt: attempts,
     });
 
     // A discarded attempt's run dir (video/screenshots) is cleaned up —

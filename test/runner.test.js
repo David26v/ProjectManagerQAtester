@@ -62,6 +62,10 @@ test('runSuite: passing suite runs to completion with video captured', async (t)
 
   assert.ok(events.some((e) => e.type === 'step-start' && e.index === 0));
   assert.ok(events.some((e) => e.type === 'step-end' && e.status === 'passed'));
+  // Every progress event is tagged with its 1-based attempt number so a
+  // listener can tell retries (or overlapping runs of the same suite)
+  // apart instead of blindly summing completed-step counts.
+  assert.ok(events.every((e) => e.attempt === 1));
 
   const persisted = store.getRun(report.runId);
   assert.equal(persisted.status, 'passed');
