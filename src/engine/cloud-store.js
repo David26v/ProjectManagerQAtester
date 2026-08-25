@@ -241,11 +241,21 @@ function createCloudStore({ prisma, supabase, localStore }) {
     // before this run report is "done" — best-effort per file (see
     // `uploadRunMedia`), then re-persist the mutated report (paths now
     // `storage:<runId>/<filename>`) and reclaim the local disk.
+    //
+    // The local dir is only removed on FULL success: if any file failed to
+    // upload (`mediaUploadError`), deleting it would destroy that file's
+    // only remaining copy — the `qaflow-media://` fallback and any future
+    // retry both depend on it still being on disk. Partial failures leave
+    // the dir behind; only a run whose every media file made it to storage
+    // reclaims its local disk.
     if (supabase && hasLocalMedia(saved)) {
       const runDirPath = localStore.runDir(runId);
       saved = await uploadRunMedia(supabase, runId, runDirPath, saved);
       await prisma.run.update({ where: { runId }, data: columnsFor(saved) });
-      await fs.promises.rm(runDirPath, { recursive: true, force: true });
+      const hasUploadError = (saved.capturedMedia || []).some((m) => m.mediaUploadError);
+      if (!hasUploadError) {
+        await fs.promises.rm(runDirPath, { recursive: true, force: true });
+      }
     }
 
     return saved;

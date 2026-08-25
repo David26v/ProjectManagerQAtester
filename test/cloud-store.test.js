@@ -244,3 +244,114 @@ test('cloud store round-trips the v1 store interface', async (t) => {
     await prisma.$disconnect();
   }
 });
+
+// A stub `supabase` — cloud-store only ever reaches Supabase through
+// `storage.from(bucket).upload(...)` (via `uploadRunMedia`), so a minimal
+// fake covering just that call is enough to drive `saveRun`'s upload/gating
+// logic deterministically, without touching the real bucket.
+function stubSupabase(failFilenames) {
+  return {
+    storage: {
+      from() {
+        return {
+          async upload(key) {
+            const filename = key.split('/').pop();
+            if (failFilenames.has(filename)) {
+              return { error: new Error(`stub upload failure for ${filename}`) };
+            }
+            return { error: null };
+          },
+        };
+      },
+    },
+  };
+}
+
+test('cloud store: saveRun keeps the local run dir on partial media upload failure, removes it on full success', async (t) => {
+  if (!process.env.DATABASE_URL) return t.skip('DATABASE_URL not set');
+
+  const { createPrisma } = require('../src/engine/cloud/db.js');
+  const { createStore } = require('../src/engine/store.js');
+  const { createCloudStore } = require('../src/engine/cloud-store.js');
+
+  const prisma = createPrisma();
+  const localStore = createStore(tmpBaseDir());
+
+  const baseRun = (runId, capturedMedia, steps) => ({
+    runId,
+    suiteId: `${PREFIX}suite-media`,
+    projectId: `${PREFIX}project-media`,
+    suiteName: 'Media suite',
+    targetUrl: 'https://acme.test',
+    startedAt: '2026-08-25T10:00:00.000Z',
+    finishedAt: '2026-08-25T10:00:05.000Z',
+    status: 'failed',
+    steps,
+    consoleErrors: [],
+    networkFailures: [],
+    capturedMedia,
+  });
+
+  try {
+    // ---- partial failure: one file uploads, one doesn't ----
+    const partialRunId = `${PREFIX}run-media-partial`;
+    const partialStore = createCloudStore({ prisma, supabase: stubSupabase(new Set(['bad.png'])), localStore });
+    const partialDir = localStore.runDir(partialRunId);
+    fs.mkdirSync(partialDir, { recursive: true });
+    fs.writeFileSync(path.join(partialDir, 'ok.png'), 'ok-bytes');
+    fs.writeFileSync(path.join(partialDir, 'bad.png'), 'bad-bytes');
+
+    const partialSaved = await partialStore.saveRun(
+      baseRun(
+        partialRunId,
+        [
+          { id: 'a', type: 'screenshot', path: 'ok.png', stepIndex: 0 },
+          { id: 'b', type: 'screenshot', path: 'bad.png', stepIndex: 1 },
+        ],
+        [{ name: 'step 2', status: 'failed', error: 'boom', screenshot: 'bad.png' }]
+      )
+    );
+
+    assert.ok(fs.existsSync(partialDir), 'local run dir must survive a partial upload failure');
+
+    const okEntry = partialSaved.capturedMedia.find((m) => m.id === 'a');
+    assert.equal(okEntry.path, `storage:${partialRunId}/ok.png`, 'succeeded file is rewritten to a storage: path');
+    assert.equal(okEntry.mediaUploadError, undefined);
+
+    const badEntry = partialSaved.capturedMedia.find((m) => m.id === 'b');
+    assert.equal(badEntry.path, 'bad.png', 'failed file keeps its local filename so the qaflow-media:// fallback still resolves it');
+    assert.match(badEntry.mediaUploadError, /stub upload failure/);
+
+    // The failed screenshot field must also stay local — its backing file is
+    // still on disk (the dir wasn't removed), unlike a field pointing at a
+    // file that did upload successfully.
+    assert.equal(partialSaved.steps[0].screenshot, 'bad.png');
+
+    // Re-fetching from Postgres confirms the mutated report (with the
+    // partial storage: rewrite + mediaUploadError) was persisted, not just
+    // returned in memory.
+    const refetched = await partialStore.getRun(partialRunId);
+    assert.equal(refetched.capturedMedia.find((m) => m.id === 'a').path, `storage:${partialRunId}/ok.png`);
+    assert.ok(refetched.capturedMedia.find((m) => m.id === 'b').mediaUploadError);
+
+    // ---- full success: every file uploads, dir is reclaimed ----
+    const fullRunId = `${PREFIX}run-media-full`;
+    const fullStore = createCloudStore({ prisma, supabase: stubSupabase(new Set()), localStore });
+    const fullDir = localStore.runDir(fullRunId);
+    fs.mkdirSync(fullDir, { recursive: true });
+    fs.writeFileSync(path.join(fullDir, 'ok.png'), 'ok-bytes');
+
+    const fullSaved = await fullStore.saveRun(
+      baseRun(fullRunId, [{ id: 'c', type: 'screenshot', path: 'ok.png', stepIndex: 0 }], [])
+    );
+
+    assert.equal(fullSaved.capturedMedia[0].path, `storage:${fullRunId}/ok.png`);
+    assert.ok(!fs.existsSync(fullDir), 'local run dir is reclaimed once every file uploads successfully');
+  } finally {
+    if (fs.existsSync(localStore.runDir(`${PREFIX}run-media-partial`))) {
+      fs.rmSync(localStore.runDir(`${PREFIX}run-media-partial`), { recursive: true, force: true });
+    }
+    await cleanup(prisma);
+    await prisma.$disconnect();
+  }
+});
