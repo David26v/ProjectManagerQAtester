@@ -1,6 +1,6 @@
-# QA Flow — Releasing
+# Astreus Tech Tester Tool — Releasing
 
-QA Flow ships auto-updates through `electron-updater` reading GitHub Releases
+Astreus Tech Tester Tool ships auto-updates through `electron-updater` reading GitHub Releases
 on `David26v/ProjectManagerQAtester` (see the `publish` block in
 `package.json`). Installed copies check for a new release on boot (after a
 short delay) and every 4 hours, download automatically, and prompt the user
@@ -41,6 +41,9 @@ You need a GitHub account with access to this repo. Nothing else.
    confirm the newest release has:
    - `Astreus Tech Tester Tool Setup <version>.exe` — the installer.
    - `latest.yml` — the update manifest `electron-updater` polls for.
+   - confirm the release is NOT marked Draft — `electron-updater` cannot see
+     draft releases, so a draft release is invisible to installed clients
+     even though it looks published to you.
 
    If either is missing, the release is incomplete — don't tell users to
    expect the update yet; re-run the workflow with the next version number
@@ -72,7 +75,14 @@ debug the build locally before trusting CI with it.
    git add package.json
    git commit -m "chore: bump version to X.Y.Z"
    ```
-3. **Build and publish** — this builds the renderer, packages the Windows
+3. **Push** the commit:
+   ```bash
+   git push
+   ```
+   `npm run release` tags and publishes from your local `HEAD` — if the bump
+   commit only exists locally, the remote's tagged commit won't match what's
+   on the branch, so push it before publishing.
+4. **Build and publish** — this builds the renderer, packages the Windows
    installer, and uploads it (plus the `latest.yml` update manifest) to a new
    GitHub Release tagged from `package.json`'s version. Requires a GitHub
    token with `repo` scope on `GH_TOKEN`; `gh auth token` reuses your local
@@ -88,7 +98,7 @@ debug the build locally before trusting CI with it.
    $env:GH_TOKEN = gh auth token
    npm run release
    ```
-4. **Verify the release** on GitHub — the Release should contain:
+5. **Verify the release** on GitHub — the Release should contain:
    - `Astreus Tech Tester Tool Setup <version>.exe` — the NSIS installer.
    - `latest.yml` — the update manifest `electron-updater` polls for.
    - the matching `.exe.blockmap` (used for differential downloads).

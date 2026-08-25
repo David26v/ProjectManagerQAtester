@@ -228,17 +228,18 @@ function AppShell() {
   const { readyVersion, dismiss: dismissUpdateReady } = useUpdateReadyListener();
   const [confirmRestartOpen, setConfirmRestartOpen] = useState(false);
 
-  // A run in flight is driving a real Playwright process mid-write (video,
-  // screenshots, report.json) — quitAndInstall() force-kills the whole app,
-  // so restarting while `activeRun` is set needs an explicit "abort it?"
-  // confirmation instead of installing straight away. The button itself
-  // stays enabled either way — the user should still be able to choose.
-  function handleRestartClick() {
-    if (activeRun) {
+  // A run or recording in flight is driving a real Playwright process
+  // mid-write (video, screenshots, report.json) — quitAndInstall()
+  // force-kills the whole app, so restarting needs an explicit "abort it?"
+  // confirmation instead of installing straight away. Main is the source of
+  // truth for "busy" (it also sees scheduled runs and recordings the
+  // renderer's own `activeRun` state can't see) — call install() first and
+  // only show the confirm dialog if main reports back blocked.
+  async function handleRestartClick() {
+    const result = await window.qaflow.updates.install();
+    if (result && result.blocked) {
       setConfirmRestartOpen(true);
-      return;
     }
-    window.qaflow.updates.install();
   }
 
   return (
@@ -274,11 +275,11 @@ function AppShell() {
 
       <ConfirmDialog
         open={confirmRestartOpen}
-        title="A test run is in progress"
-        description="Restarting now will abort it. Restart anyway?"
+        title="A test run/recording is in progress"
+        description="A test run/recording is in progress — restarting now will abort it. Restart anyway?"
         confirmLabel="Restart anyway"
         variant="danger"
-        onConfirm={() => window.qaflow.updates.install()}
+        onConfirm={() => window.qaflow.updates.install({ force: true })}
         onClose={() => setConfirmRestartOpen(false)}
       />
     </>

@@ -1,6 +1,8 @@
 {
   "name": "qa-flow",
   "version": "2.0.0",
+  "description": "Astreus Tech Tester Tool — record, run, and report browser QA suites",
+  "author": "Astreus Tech",
   "private": true,
   "main": "src/main/main.js",
   "scripts": {
@@ -24,7 +26,7 @@
       "signExecutable": false
     },
     "nsis": { "oneClick": true, "perMachine": false },
-    "publish": [{ "provider": "github", "owner": "David26v", "repo": "ProjectManagerQAtester" }]
+    "publish": [{ "provider": "github", "owner": "David26v", "repo": "ProjectManagerQAtester", "releaseType": "release" }]
   },
   "dependencies": {
     "archiver": "^7.0.1",

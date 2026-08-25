@@ -66,7 +66,7 @@ const KNOWN_STEP_TYPES = new Set([
   'assertText',
 ]);
 
-function registerIpc({ store, getMainWindow, updates }) {
+function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => null }) {
   function send(channel, payload) {
     const win = getMainWindow();
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -75,6 +75,15 @@ function registerIpc({ store, getMainWindow, updates }) {
   function handle(channel, fn) {
     ipcMain.handle(channel, async (_event, ...args) => fn(...args));
   }
+
+  // Count of runs currently executing via `executeRun` — incremented for
+  // both manual (`runs:run`) and scheduled (`scheduler.js`) triggers, since
+  // both funnel through the one function below. `updates:install` reads
+  // this (plus `recorder.isRunning()`) as the single source of truth for
+  // "is it safe to quitAndInstall right now" — the renderer's own
+  // `activeRun` state only knows about manual runs it started itself, and
+  // has no visibility into scheduled runs or an in-progress recording.
+  let activeRunCount = 0;
 
   // ---- projects ----
   handle('projects:list', () => store.listProjects());
@@ -133,6 +142,15 @@ function registerIpc({ store, getMainWindow, updates }) {
   async function executeRun(suiteId, opts = {}, triggeredBy) {
     const { environment, headless = true, credentialProfileId, retries = 0 } = opts;
 
+    // A first-run Chromium download is still in flight — Playwright's own
+    // "executable doesn't exist" error is technically accurate but reads
+    // like a broken install rather than "wait a bit". Surface the friendly
+    // version instead of letting the raw error escape.
+    const browserStatus = getBrowserStatus();
+    if (browserStatus && browserStatus.status === 'installing') {
+      throw new Error('Browser is still installing — try again in a minute');
+    }
+
     const suite = store.getSuite(suiteId);
     if (!suite) throw new Error(`Suite "${suiteId}" not found`);
     const project = store.getProject(suite.projectId);
@@ -143,6 +161,7 @@ function registerIpc({ store, getMainWindow, updates }) {
     let storageStatePath = null;
     let manualLogin = null;
     let credentialMeta = null;
+    activeRunCount += 1;
     try {
       if (credentialProfileId) {
         const { meta, plaintext } = decryptCredential(store, credentialProfileId);
@@ -177,6 +196,7 @@ function registerIpc({ store, getMainWindow, updates }) {
 
       return report;
     } finally {
+      activeRunCount -= 1;
       if (storageStatePath && fs.existsSync(storageStatePath)) fs.unlinkSync(storageStatePath);
       if (manualLogin) {
         manualLogin.username = '';
@@ -200,6 +220,11 @@ function registerIpc({ store, getMainWindow, updates }) {
 
   handle('recorder:start', async ({ url, projectId, credentialProfileId } = {}) => {
     if (recorder && recorder.isRunning()) throw new Error('A recording is already in progress');
+
+    const browserStatus = getBrowserStatus();
+    if (browserStatus && browserStatus.status === 'installing') {
+      throw new Error('Browser is still installing — try again in a minute');
+    }
 
     let storageStatePath = null;
     let credentialMeta = null;
@@ -444,7 +469,18 @@ function registerIpc({ store, getMainWindow, updates }) {
   // ---- updates ----
   handle('updates:status', () => updates.status());
   handle('updates:check', () => updates.check());
-  handle('updates:install', () => updates.quitAndInstall());
+  // Main is the single source of truth for "is it safe to restart" — it
+  // sees scheduled runs and recordings the renderer's own `activeRun` state
+  // never learns about. `force` (passed once the renderer's own confirm
+  // dialog has been accepted) skips the check and installs regardless.
+  handle('updates:install', (opts = {}) => {
+    const { force = false } = opts || {};
+    if (!force) {
+      if (recorder && recorder.isRunning()) return { blocked: true, reason: 'recording' };
+      if (activeRunCount > 0) return { blocked: true, reason: 'run' };
+    }
+    return updates.quitAndInstall();
+  });
 
   // ---- schedules ----
   handle('schedules:list', () => store.listSchedules());

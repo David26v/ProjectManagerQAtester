@@ -194,7 +194,7 @@ every non-archived suite tagged `smoke` for that project.
 
 ## 11. Updates
 
-An installed copy of QA Flow checks for a new version automatically on
+An installed copy of Astreus Tech Tester Tool checks for a new version automatically on
 launch and every few hours, downloads it in the background, and shows a
 "Restart to apply" banner once it's ready — just click **Restart**. You can
 also trigger a manual check from **Settings → About → Check for updates**.

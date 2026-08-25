@@ -23,6 +23,10 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'qaflow-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
+// Dev checkouts must never share the installed app's data. Packaged dir name
+// 'qa-flow' is permanent — renaming orphans client data.
+if (!app.isPackaged) app.setPath('userData', app.getPath('userData') + '-dev');
+
 const baseDir = path.join(app.getPath('userData'), 'qaflow-data');
 const store = createStore(baseDir);
 
@@ -132,7 +136,12 @@ app.whenReady().then(async () => {
   registerMediaProtocol();
   mainWindow = createWindow();
   const updates = createUpdates({ getMainWindow: () => mainWindow });
-  const { executeRun } = registerIpc({ store, getMainWindow: () => mainWindow, updates });
+  const { executeRun } = registerIpc({
+    store,
+    getMainWindow: () => mainWindow,
+    updates,
+    getBrowserStatus: () => lastBrowserStatus,
+  });
 
   // Attach BEFORE awaiting bootApi() — `loadFile` above is unawaited, so if
   // the static dist/index.html finishes loading while bootApi() is still
