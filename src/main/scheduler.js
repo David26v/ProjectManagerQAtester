@@ -24,7 +24,8 @@ function createScheduler({ store, executeRun, notify }) {
     checking = true;
     try {
       const now = new Date().toISOString();
-      const due = store.listSchedules().filter((s) => s.enabled && s.nextRunAt && s.nextRunAt <= now);
+      const allSchedules = await store.listSchedules();
+      const due = allSchedules.filter((s) => s.enabled && s.nextRunAt && s.nextRunAt <= now);
 
       // Sequential, not Promise.all — these launch real browser runs and
       // share the one-headed-browser assumption the recorder/run paths rely
@@ -53,12 +54,13 @@ function createScheduler({ store, executeRun, notify }) {
         // was deleted or edited (e.g. toggled off) while it was in flight.
         // Writing back the stale object would resurrect a deleted schedule
         // via upsert, or clobber whatever changed mid-run.
-        const fresh = store.listSchedules().find((s) => s.id === schedule.id);
+        const freshSchedules = await store.listSchedules();
+        const fresh = freshSchedules.find((s) => s.id === schedule.id);
         if (!fresh) continue;
 
         const lastRunAt = new Date().toISOString();
         const nextRunAt = computeNextRunAt(fresh, lastRunAt);
-        const saved = store.saveSchedule({
+        const saved = await store.saveSchedule({
           ...fresh,
           lastRunAt,
           nextRunAt,
@@ -77,12 +79,14 @@ function createScheduler({ store, executeRun, notify }) {
   // documented "missed runs are skipped, not fired at next launch" behavior.
   // For a 'once' schedule that has no next occurrence, disable it so it
   // doesn't linger as perpetually "due".
-  function sweepLapsed() {
+  async function sweepLapsed() {
     const now = new Date().toISOString();
-    const lapsed = store.listSchedules().filter((s) => s.enabled && s.nextRunAt && s.nextRunAt <= now);
+    const schedules = await store.listSchedules();
+    const lapsed = schedules.filter((s) => s.enabled && s.nextRunAt && s.nextRunAt <= now);
     for (const schedule of lapsed) {
       const nextRunAt = computeNextRunAt(schedule, now);
-      store.saveSchedule({
+      // eslint-disable-next-line no-await-in-loop
+      await store.saveSchedule({
         ...schedule,
         nextRunAt,
         enabled: schedule.recurrence === 'once' && nextRunAt == null ? false : schedule.enabled,
@@ -92,7 +96,7 @@ function createScheduler({ store, executeRun, notify }) {
 
   function start() {
     if (timer) return;
-    sweepLapsed();
+    sweepLapsed().catch((e) => console.error('[qaflow] scheduler sweepLapsed failed:', e));
     timer = setInterval(() => {
       checkNow().catch((e) => console.error('[qaflow] scheduler checkNow failed:', e));
     }, POLL_INTERVAL_MS);

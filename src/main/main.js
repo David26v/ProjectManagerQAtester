@@ -5,17 +5,27 @@
 // lives in preload.js. This file is the only one that knows about the
 // BrowserWindow / protocol / app singleton.
 
+// Must load before anything reads `process.env.*` below (Supabase/Prisma
+// clients, auth.js) — `.env` lives at the app root, which in dev IS the
+// repo root (cwd), but in a packaged app or `--smoke` it may be absent
+// entirely; `dotenv.config()` silently no-ops rather than throwing when the
+// file doesn't exist, so no extra guard is needed here.
+require('dotenv').config();
+
 const path = require('node:path');
 const fs = require('node:fs');
 const { app, BrowserWindow, protocol } = require('electron');
 
 const { createStore } = require('../engine/store.js');
+const { createCloudStore } = require('../engine/cloud-store.js');
 const { createApi } = require('../engine/api.js');
 const { runSuite } = require('../engine/runner.js');
 const { registerIpc } = require('./ipc.js');
+const { createAuth } = require('./auth.js');
 const { createScheduler } = require('./scheduler.js');
 const { createBrowserBootstrap } = require('./browser-bootstrap.js');
 const { createUpdates } = require('./updates.js');
+const { createPrisma } = require('../engine/cloud/db.js');
 const { createSupabaseAdmin } = require('../engine/cloud/supabase.js');
 const { ensureBucket } = require('../engine/cloud/media.js');
 
@@ -29,8 +39,60 @@ protocol.registerSchemesAsPrivileged([
 // 'qa-flow' is permanent — renaming orphans client data.
 if (!app.isPackaged) app.setPath('userData', app.getPath('userData') + '-dev');
 
-const baseDir = path.join(app.getPath('userData'), 'qaflow-data');
-const store = createStore(baseDir);
+const userDataDir = app.getPath('userData');
+const baseDir = path.join(userDataDir, 'qaflow-data');
+
+// `localStore` is always built — it's the JSON store used for engine tests,
+// AND (per the cloud store's contract) the device-local half of the cloud
+// store (credential blobs, settings.json, in-flight run scratch dir). It is
+// also the fallback store itself when cloud construction fails below, so
+// the app keeps working offline-ish instead of white-screening.
+const localStore = createStore(baseDir);
+
+// Cloud construction (Prisma + Supabase admin client + the cloud store
+// wrapping them) is guarded end-to-end: `--smoke` runs with no `.env` and no
+// network at all, and even outside smoke, a broken/unreachable Supabase
+// project must not crash app boot — only degrade to local-only data.
+let prisma = null;
+try {
+  prisma = createPrisma();
+} catch (e) {
+  console.warn(`[qaflow] Prisma client unavailable — falling back to local data: ${e.message}`);
+}
+
+let supabaseAdmin = null;
+try {
+  supabaseAdmin = createSupabaseAdmin();
+} catch (e) {
+  console.warn(`[qaflow] Supabase admin client unavailable: ${e.message}`);
+}
+
+let store = localStore;
+if (prisma && supabaseAdmin) {
+  try {
+    store = createCloudStore({ prisma, supabase: supabaseAdmin, localStore });
+  } catch (e) {
+    console.warn(`[qaflow] cloud store unavailable — running on local data: ${e.message}`);
+    store = localStore;
+  }
+} else {
+  console.warn('[qaflow] cloud unavailable — running on local data');
+}
+
+// Auth module — separate from the admin client above: it uses the
+// PUBLISHABLE key (user-facing sign-in), never the service role key. Same
+// guard rule: missing env (smoke, or a dev checkout with no `.env`) must not
+// crash boot — `auth` stays `null` and `registerIpc`'s login gate is simply
+// not applied (pre-Task-4 unrestricted behavior), since there is no login
+// surface to gate behind in that case.
+//
+// Construction is deferred to `app.whenReady()` (see below), NOT done here
+// at module scope like `localStore`/`prisma`/`supabaseAdmin` — `createAuth`
+// restores the persisted session synchronously off `client.auth.getSession()`,
+// which reads through the safeStorage-backed storage adapter, and
+// `safeStorage` throws "cannot be used before app is ready" if touched
+// before Electron's `app` singleton is actually ready.
+let auth = null;
 
 let mainWindow = null;
 
@@ -73,7 +135,7 @@ function createWindow() {
     height: 980,
     minWidth: 1200,
     minHeight: 800,
-    title: 'QA Flow',
+    title: 'Astreus Tech Tester Tool',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -122,18 +184,6 @@ function bootBrowser() {
   });
 }
 
-// Supabase isn't wired as the app's store yet (Task 4) — this is only the
-// admin client for run-media storage (signed URLs in ipc.js, bucket
-// bootstrap below). Missing/invalid env must not crash the app: `--smoke`
-// runs with no `.env` at all, and even in normal use cloud storage being
-// down shouldn't block local-only workflows.
-let supabaseAdmin = null;
-try {
-  supabaseAdmin = createSupabaseAdmin();
-} catch (e) {
-  console.warn(`[qaflow] Supabase admin client unavailable: ${e.message}`);
-}
-
 async function bootMediaBucket() {
   if (!supabaseAdmin) return;
   try {
@@ -143,9 +193,18 @@ async function bootMediaBucket() {
   }
 }
 
-async function bootApi() {
+// REST API boot is gated behind login when auth is wired: while logged out
+// it simply hasn't been started at all (closest thing to a 503 without
+// hand-rolling a "pending" express app). Once booted it is left running for
+// the rest of the process's life even across a later logout — restarting
+// express on every login/logout edge isn't worth the complexity for a
+// single-tenant local tool, and the brief explicitly allows this.
+let apiBooted = false;
+async function bootApiOnce() {
+  if (apiBooted) return;
+  apiBooted = true;
   const settings = store.getSettings();
-  const port = settings.apiPort || 4317;
+  const port = (settings && settings.apiPort) || 4317;
   const api = createApi({ store, runSuiteFn: runSuite });
   try {
     await api.listen(port);
@@ -157,6 +216,15 @@ async function bootApi() {
 
 app.whenReady().then(async () => {
   registerMediaProtocol();
+
+  // Now safe to touch `safeStorage` — build the auth module here, not at
+  // module scope (see the comment above `let auth = null`).
+  try {
+    auth = createAuth({ userDataDir });
+  } catch (e) {
+    console.warn(`[qaflow] auth unavailable — IPC will run ungated: ${e.message}`);
+  }
+
   mainWindow = createWindow();
   const updates = createUpdates({ getMainWindow: () => mainWindow });
   const { executeRun } = registerIpc({
@@ -165,6 +233,7 @@ app.whenReady().then(async () => {
     updates,
     getBrowserStatus: () => lastBrowserStatus,
     supabase: supabaseAdmin,
+    auth,
   });
 
   // Attach BEFORE awaiting bootApi() — `loadFile` above is unawaited, so if
@@ -194,11 +263,28 @@ app.whenReady().then(async () => {
     });
   }
 
-  await Promise.all([bootApi(), bootMediaBucket()]);
+  // API boot: if auth isn't wired at all (no env — smoke, or a dev checkout
+  // with no `.env`), there's no login surface to gate behind, so boot
+  // immediately like before Task 4. If auth IS wired, boot once a session is
+  // confirmed — either already-restored (checked after `auth.ready`) or via
+  // the first `auth:changed` with `loggedIn: true`.
+  if (auth) {
+    auth.ready.then(() => {
+      if (auth.getUser()) bootApiOnce();
+    });
+    auth.onChange((status) => {
+      if (status.loggedIn) bootApiOnce();
+    });
+  } else {
+    bootApiOnce();
+  }
+
+  await bootMediaBucket();
 
   // Scheduler is best-effort — a failure here (e.g. a corrupt
-  // schedules.json) must not take down the app; `--smoke` already exits
-  // via the `did-finish-load` listener above regardless of this.
+  // schedules.json, or an unreachable cloud store) must not take down the
+  // app; `--smoke` already exits via the `did-finish-load` listener above
+  // regardless of this.
   try {
     const scheduler = createScheduler({
       store,
@@ -227,3 +313,4 @@ process.on('uncaughtException', (err) => {
   console.error('[qaflow] uncaught exception:', err);
   if (isSmoke) app.exit(1);
 });
+

@@ -183,6 +183,14 @@ function createStore(baseDir) {
     return fs.readFileSync(file);
   }
 
+  // Alias kept so callers (ipc.js) can use ONE name regardless of which
+  // store implementation is active — `cloud-store.js` only exposes
+  // `getCredentialBlob` (matching the store interface contract), while this
+  // JSON store historically named it `readCredentialBlob`. `readCredentialBlob`
+  // itself stays exported too — `cloud-store.js` calls it directly on its
+  // `localStore` collaborator, and existing tests assert on that name.
+  const getCredentialBlob = readCredentialBlob;
+
   function deleteCredential(id) {
     const index = readJson(credentialsIndexFile, []).filter((c) => c.id !== id);
     writeJson(credentialsIndexFile, index);
@@ -290,6 +298,7 @@ function createStore(baseDir) {
     listCredentials,
     saveCredential,
     readCredentialBlob,
+    getCredentialBlob,
     deleteCredential,
     listTickets,
     saveTicket,
