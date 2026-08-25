@@ -57,12 +57,12 @@ function createScheduler({ store, executeRun, notify }) {
         if (!fresh) continue;
 
         const lastRunAt = new Date().toISOString();
-        const nextRunAt = computeNextRunAt(schedule, lastRunAt);
+        const nextRunAt = computeNextRunAt(fresh, lastRunAt);
         const saved = store.saveSchedule({
           ...fresh,
           lastRunAt,
           nextRunAt,
-          enabled: schedule.recurrence === 'once' ? false : fresh.enabled,
+          enabled: fresh.recurrence === 'once' ? false : fresh.enabled,
         });
 
         notify(saved, status);
