@@ -14,6 +14,7 @@ const { createApi } = require('../engine/api.js');
 const { runSuite } = require('../engine/runner.js');
 const { registerIpc } = require('./ipc.js');
 const { createScheduler } = require('./scheduler.js');
+const { createBrowserBootstrap } = require('./browser-bootstrap.js');
 
 const isSmoke = process.argv.includes('--smoke');
 
@@ -77,6 +78,30 @@ function createWindow() {
   return win;
 }
 
+// Fire-and-forget: resolves/installs the Playwright Chromium build the
+// engine drives at runtime. Never awaited from `whenReady` — the app must
+// stay usable while a first-run download is in flight. Skipped entirely in
+// `--smoke`, which has no browser-dependent assertions and exits as soon as
+// the renderer finishes its first paint.
+function bootBrowser() {
+  const bootstrap = createBrowserBootstrap({
+    onStatus: (status) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('browser:status', { status });
+      }
+    },
+  });
+
+  bootstrap.ensureChromium().then((result) => {
+    if (!result.ok && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('browser:status', {
+        status: 'error',
+        error: `Browser install failed — recording/runs unavailable: ${result.error}`,
+      });
+    }
+  });
+}
+
 async function bootApi() {
   const settings = store.getSettings();
   const port = settings.apiPort || 4317;
@@ -103,6 +128,8 @@ app.whenReady().then(async () => {
       console.log('SMOKE OK');
       app.exit(0);
     });
+  } else {
+    bootBrowser();
   }
 
   await bootApi();

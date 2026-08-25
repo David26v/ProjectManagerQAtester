@@ -123,6 +123,21 @@ function useRunManager(reload) {
   return { activeRun, startRun, dismissActiveRun: () => setActiveRun(null) };
 }
 
+// Surfaces the main process's Playwright Chromium bootstrap. `installing`/
+// `done` are expected first-run noise (a background download), so only the
+// `error` status — main.js already prefixes it with the user-facing message
+// — reaches a toast; the happy path stays silent.
+function useBrowserBootstrapListener() {
+  const toast = useToast();
+
+  useEffect(() => {
+    const unsubscribe = window.qaflow.on('browser:status', ({ status, error }) => {
+      if (status === 'error') toast(error, 'error');
+    });
+    return unsubscribe;
+  }, [toast]);
+}
+
 function Screen({ route, data, onNewProject, startRun }) {
   const [top, second] = route.segments;
 
@@ -171,6 +186,7 @@ function AppShell() {
   const data = useAppData();
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const { activeRun, startRun, dismissActiveRun } = useRunManager(data.reload);
+  useBrowserBootstrapListener();
 
   return (
     <>

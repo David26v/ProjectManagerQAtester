@@ -5,3 +5,4 @@ qaflow-data/
 src/renderer/dist/
 .env
 .env.*
+release/

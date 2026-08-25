@@ -11,7 +11,7 @@ function invoke(channel) {
   return (...args) => ipcRenderer.invoke(channel, ...args);
 }
 
-const PUSH_CHANNELS = new Set(['recorder:step', 'run:progress', 'schedules:fired']);
+const PUSH_CHANNELS = new Set(['recorder:step', 'run:progress', 'schedules:fired', 'browser:status']);
 
 contextBridge.exposeInMainWorld('qaflow', {
   projects: {

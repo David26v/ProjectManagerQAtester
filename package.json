@@ -1,18 +1,32 @@
 {
   "name": "qa-flow",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
   "main": "src/main/main.js",
   "scripts": {
     "build:renderer": "vite build",
     "start": "npm run build:renderer && electron .",
     "test": "node --test test/**/*.test.js",
-    "smoke": "npm run build:renderer && electron . --smoke"
+    "smoke": "npm run build:renderer && electron . --smoke",
+    "dist": "npm run build:renderer && electron-builder --win --publish never",
+    "release": "npm run build:renderer && electron-builder --win --publish always"
+  },
+  "build": {
+    "appId": "com.astreus.testertool",
+    "productName": "Astreus Tech Tester Tool",
+    "directories": { "output": "release" },
+    "files": ["src/main/**", "src/engine/**", "src/renderer/dist/**", "bin/**", "package.json", "node_modules/**"],
+    "asar": true,
+    "asarUnpack": ["node_modules/playwright/**", "node_modules/playwright-core/**"],
+    "win": { "target": ["nsis"], "icon": "build/icon.ico" },
+    "nsis": { "oneClick": true, "perMachine": false },
+    "publish": [{ "provider": "github", "owner": "David26v", "repo": "ProjectManagerQAtester" }]
   },
   "dependencies": {
     "archiver": "^7.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.9",
     "exceljs": "^4.4.0",
     "express": "^4.21.1",
     "lucide-react": "^1.34.0",
@@ -26,6 +40,7 @@
     "@vitejs/plugin-react": "^6.1.0",
     "adm-zip": "^0.6.0",
     "electron": "^32.2.0",
+    "electron-builder": "^26.15.3",
     "tailwindcss": "^4.3.3",
     "vite": "^8.2.2"
   }
