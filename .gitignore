@@ -2,3 +2,4 @@ node_modules/
 qaflow-data/
 *.log
 .superpowers/
+src/renderer/dist/
