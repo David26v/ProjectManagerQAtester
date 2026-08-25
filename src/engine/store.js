@@ -33,6 +33,7 @@ function createStore(baseDir) {
   const credentialsIndexFile = path.join(credentialsDir, 'index.json');
   const ticketsFile = path.join(baseDir, 'tickets.json');
   const settingsFile = path.join(baseDir, 'settings.json');
+  const schedulesFile = path.join(baseDir, 'schedules.json');
 
   // ---- projects ----
 
@@ -238,6 +239,41 @@ function createStore(baseDir) {
     return merged;
   }
 
+  // ---- schedules ----
+
+  function listSchedules() {
+    const schedules = readJson(schedulesFile, []);
+    // Nulls (no future occurrence, e.g. a lapsed "once") sort last.
+    return [...schedules].sort((a, b) => {
+      const av = a.nextRunAt ? new Date(a.nextRunAt).getTime() : Infinity;
+      const bv = b.nextRunAt ? new Date(b.nextRunAt).getTime() : Infinity;
+      return av - bv;
+    });
+  }
+
+  function saveSchedule(s) {
+    const schedules = readJson(schedulesFile, []);
+    const now = new Date().toISOString();
+    const idx = schedules.findIndex((existing) => existing.id === s.id);
+
+    let saved;
+    if (idx === -1) {
+      saved = { ...s, id: s.id || `sched-${crypto.randomUUID()}`, createdAt: s.createdAt || now, updatedAt: now };
+      schedules.push(saved);
+    } else {
+      saved = { ...schedules[idx], ...s, createdAt: schedules[idx].createdAt, updatedAt: now };
+      schedules[idx] = saved;
+    }
+
+    writeJson(schedulesFile, schedules);
+    return saved;
+  }
+
+  function deleteSchedule(id) {
+    const schedules = readJson(schedulesFile, []).filter((s) => s.id !== id);
+    writeJson(schedulesFile, schedules);
+  }
+
   return {
     listProjects,
     getProject,
@@ -260,6 +296,9 @@ function createStore(baseDir) {
     deleteTicket,
     getSettings,
     saveSettings,
+    listSchedules,
+    saveSchedule,
+    deleteSchedule,
   };
 }
 

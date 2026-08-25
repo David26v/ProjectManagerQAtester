@@ -181,6 +181,60 @@ test('ticket id sequence BUG-1, BUG-2', () => {
   assert.equal(store.listTickets().length, 1);
 });
 
+test('schedule CRUD roundtrip + sort by nextRunAt asc', () => {
+  const store = createStore(tmpBaseDir());
+
+  assert.deepEqual(store.listSchedules(), []);
+
+  const later = store.saveSchedule({
+    suiteId: 'suite-1',
+    projectId: 'proj-1',
+    name: 'Nightly regression',
+    environment: 'Staging',
+    headless: true,
+    credentialProfileId: null,
+    at: '2026-08-26T09:00:00.000Z',
+    recurrence: 'daily',
+    enabled: true,
+    lastRunAt: null,
+    nextRunAt: '2026-08-26T09:00:00.000Z',
+  });
+  assert.ok(later.id.startsWith('sched-'));
+  assert.ok(later.createdAt);
+  assert.ok(later.updatedAt);
+
+  const sooner = store.saveSchedule({
+    suiteId: 'suite-2',
+    projectId: 'proj-1',
+    name: 'Smoke test',
+    environment: 'Staging',
+    headless: true,
+    credentialProfileId: null,
+    at: '2026-08-25T09:00:00.000Z',
+    recurrence: 'once',
+    enabled: true,
+    lastRunAt: null,
+    nextRunAt: '2026-08-25T09:00:00.000Z',
+  });
+
+  const listed = store.listSchedules();
+  assert.equal(listed.length, 2);
+  assert.equal(listed[0].id, sooner.id);
+  assert.equal(listed[1].id, later.id);
+
+  const updated = store.saveSchedule({ ...sooner, enabled: false });
+  assert.equal(updated.id, sooner.id);
+  assert.equal(updated.createdAt, sooner.createdAt);
+  assert.ok(updated.updatedAt);
+  assert.equal(updated.enabled, false);
+  assert.equal(store.listSchedules().length, 2);
+
+  store.deleteSchedule(sooner.id);
+  const remaining = store.listSchedules();
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].id, later.id);
+});
+
 test('settings patch merge', () => {
   const store = createStore(tmpBaseDir());
 

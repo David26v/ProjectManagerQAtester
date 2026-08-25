@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>QA Flow Fixture Manual Login</title>
+</head>
+<body>
+  <h1>Sign in</h1>
+  <form id="login-form">
+    <input type="email" id="u" placeholder="Email" />
+    <input type="password" id="p" placeholder="Password" />
+    <button type="submit">Sign in</button>
+  </form>
+  <div id="error" style="display: none">Invalid credentials</div>
+
+  <script>
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const password = document.getElementById('p').value;
+      if (password === 'secret123') {
+        window.location = 'dashboard.html';
+      } else {
+        document.getElementById('error').style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>

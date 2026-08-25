@@ -23,6 +23,48 @@ function resolveUrl(value, targetUrl) {
   return new URL(value, targetUrl).toString();
 }
 
+const DEFAULT_STEP_TIMEOUT = 10000;
+
+// Redacts the password from an error message before it can ever reach a
+// report, a thrown Error, or a log line. Applied even when the underlying
+// Playwright error is unlikely to contain it — belt and suspenders, since
+// the secrets rule is a hard requirement, not a best-effort one.
+function redact(message, secret) {
+  if (!secret) return message;
+  return String(message).split(secret).join('[REDACTED]');
+}
+
+// Runs the manual-login flow against `page`, before step 1 of the suite.
+// Any failure (selector not found, navigation error, timeout) is turned
+// into a single `Manual login failed: <reason>` Error with the password
+// redacted out of the reason text.
+async function performManualLogin(page, manualLogin, timeout) {
+  const { loginUrl, username, password } = manualLogin;
+  try {
+    await page.goto(loginUrl, { timeout });
+
+    const userInput = await page.waitForSelector('input[type="email"], input[type="text"]', {
+      state: 'visible',
+      timeout,
+    });
+    await userInput.fill(username);
+
+    const passInput = await page.waitForSelector('input[type="password"]', { state: 'visible', timeout });
+    await passInput.fill(password);
+
+    const submit = await page.$('button[type="submit"], input[type="submit"]');
+    if (submit) {
+      await submit.click({ timeout });
+    } else {
+      await passInput.press('Enter');
+    }
+
+    await page.waitForLoadState('networkidle', { timeout });
+  } catch (e) {
+    throw new Error(`Manual login failed: ${redact(e.message, password)}`);
+  }
+}
+
 async function runStep(page, step, targetUrl) {
   const timeout = step.timeout || 10000;
 
@@ -61,15 +103,20 @@ async function runStep(page, step, targetUrl) {
   }
 }
 
-async function runSuite({
+// Runs one full attempt of the suite (fresh browser, fresh run dir) and
+// returns the report for that attempt without persisting it. `runSuite`
+// below owns the retry loop and decides which attempt's report — and run
+// dir — survives.
+async function runAttempt({
   store,
   suite,
   project,
   environment,
-  storageStatePath = null,
-  headless = true,
-  onProgress = null,
-  triggeredBy = 'manual',
+  storageStatePath,
+  headless,
+  onProgress,
+  triggeredBy,
+  manualLogin,
 }) {
   const targetUrl = (environment && environment.baseUrl) || project.baseUrl;
   const runId = `run-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
@@ -107,6 +154,23 @@ async function runSuite({
     });
 
     let failed = false;
+
+    if (manualLogin) {
+      if (onProgress) onProgress({ type: 'step-start', index: -1, name: 'Manual login' });
+      const startedStep = Date.now();
+      try {
+        await performManualLogin(page, manualLogin, DEFAULT_STEP_TIMEOUT);
+        const durationMs = Date.now() - startedStep;
+        steps.push({ name: 'Manual login', status: 'passed', durationMs });
+        if (onProgress) onProgress({ type: 'step-end', index: -1, name: 'Manual login', status: 'passed' });
+      } catch (e) {
+        const durationMs = Date.now() - startedStep;
+        steps.push({ name: 'Manual login', status: 'failed', error: e.message, durationMs });
+        if (onProgress) onProgress({ type: 'step-end', index: -1, name: 'Manual login', status: 'failed', error: e.message });
+        failed = true;
+        status = 'failed';
+      }
+    }
 
     for (let index = 0; index < suite.steps.length; index += 1) {
       const step = suite.steps[index];
@@ -187,6 +251,58 @@ async function runSuite({
     capturedMedia,
     reportSelection: null,
   };
+
+  return { report, dir };
+}
+
+async function runSuite({
+  store,
+  suite,
+  project,
+  environment,
+  storageStatePath = null,
+  headless = true,
+  onProgress = null,
+  triggeredBy = 'manual',
+  manualLogin = null,
+  retries = 0,
+}) {
+  let attempts = 0;
+  let report;
+  let dir;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    attempts += 1;
+    const attempt = await runAttempt({
+      store,
+      suite,
+      project,
+      environment,
+      storageStatePath,
+      headless,
+      onProgress,
+      triggeredBy,
+      manualLogin,
+    });
+
+    // A discarded attempt's run dir (video/screenshots) is cleaned up —
+    // only the final attempt's artifacts are worth keeping.
+    if (dir) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+
+    report = attempt.report;
+    dir = attempt.dir;
+
+    if (report.status === 'failed' && attempts <= retries) {
+      continue;
+    }
+    break;
+  }
+
+  report.attempts = attempts;
+  if (manualLogin) report.manualLogin = true;
 
   return store.saveRun(report);
 }

@@ -174,3 +174,86 @@ test('runSuite: console errors and >=400 responses are captured as consoleErrors
   assert.ok(report.consoleErrors.some((e) => e.text === 'boom'));
   assert.ok(report.consoleErrors.some((e) => /^404 .* - .*does-not-exist\.html$/.test(e.text)));
 });
+
+test('runSuite: manualLogin with correct creds logs in before step 1 and never leaks the password', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const store = createStore(tmpBaseDir());
+  const project = { id: 'proj-1', name: 'Fixture', baseUrl: fixture.url };
+  const environment = { name: 'Local', baseUrl: fixture.url };
+  const suite = {
+    id: 'suite-login-ok',
+    projectId: project.id,
+    name: 'Manual login flow',
+    steps: [{ type: 'assertVisible', name: 'Assert dashboard visible', selector: '#dashboard-root', timeout: 10000 }],
+  };
+
+  const report = await runSuite({
+    store,
+    suite,
+    project,
+    environment,
+    headless: true,
+    manualLogin: { loginUrl: `${fixture.url}/login.html`, username: 'user@example.com', password: 'secret123' },
+  });
+
+  assert.equal(report.status, 'passed');
+  assert.equal(report.manualLogin, true);
+  assert.equal(report.attempts, 1);
+
+  const serialized = JSON.stringify(report);
+  assert.ok(!serialized.includes('secret123'));
+});
+
+test('runSuite: manualLogin with wrong password fails the run and never leaks the password', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const store = createStore(tmpBaseDir());
+  const project = { id: 'proj-1', name: 'Fixture', baseUrl: fixture.url };
+  const environment = { name: 'Local', baseUrl: fixture.url };
+  const suite = {
+    id: 'suite-login-bad',
+    projectId: project.id,
+    name: 'Manual login flow (bad creds)',
+    steps: [{ type: 'assertVisible', name: 'Assert dashboard visible', selector: '#dashboard-root', timeout: 3000 }],
+  };
+
+  const report = await runSuite({
+    store,
+    suite,
+    project,
+    environment,
+    headless: true,
+    manualLogin: { loginUrl: `${fixture.url}/login.html`, username: 'user@example.com', password: 'wrong-password' },
+  });
+
+  assert.equal(report.status, 'failed');
+
+  const serialized = JSON.stringify(report);
+  assert.ok(!serialized.includes('wrong-password'));
+});
+
+test('runSuite: retries re-runs the whole suite fresh and keeps the final attempts count', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const store = createStore(tmpBaseDir());
+  const project = { id: 'proj-1', name: 'Fixture', baseUrl: fixture.url };
+  const environment = { name: 'Local', baseUrl: fixture.url };
+  const suite = {
+    id: 'suite-retry',
+    projectId: project.id,
+    name: 'Always fails',
+    steps: [
+      { type: 'goto', name: 'Go to login', value: '/', timeout: 10000 },
+      { type: 'assertVisible', name: 'Assert missing element', selector: '#never-exists', timeout: 1000 },
+    ],
+  };
+
+  const report = await runSuite({ store, suite, project, environment, headless: true, retries: 1 });
+
+  assert.equal(report.status, 'failed');
+  assert.equal(report.attempts, 2);
+});
