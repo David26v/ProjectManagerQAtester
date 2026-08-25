@@ -219,7 +219,7 @@ test('cloud db connectivity and schema', async (t) => {
 
 - [ ] Step 1 (RED): `test/cloud-media.test.js` — skip without env; with it: ensureBucket twice (idempotent), upload a tiny temp file as `astreus-test-run/<name>`, get a signed URL, `fetch` it and assert the bytes round-trip, then remove the object. Run: fails.
 - [ ] Step 2 (GREEN): implement `media.js` with supabase-js `storage.createBucket('astreus-run-media', { public: false })` (swallow "already exists"), `storage.from('astreus-run-media').upload/createSignedUrl/remove`.
-- [ ] Step 3: wire `cloud-store.saveRun`: after upserting the row, if the report has local media (paths not starting `storage:`), call `uploadRunMedia`, re-upsert the mutated report, then `fs.rm` the local run dir. `app:mediaUrl` in ipc.js: paths starting `storage:` → `signedMediaUrl`; otherwise keep the v1 `qaflow-media://` fallback. main.js boot: `await ensureBucket(...)` next to the API boot (failure = warning, not crash).
+- [ ] Step 3: wire `cloud-store.saveRun`: after upserting the row, if the report has local media (paths not starting `storage:`), call `uploadRunMedia`, re-upsert the mutated report, then `fs.rm` the local run dir ONLY when no capturedMedia entry carries `mediaUploadError` — on partial failure keep the dir (local fallback + retry). `app:mediaUrl` in ipc.js: paths starting `storage:` → `signedMediaUrl`; otherwise keep the v1 `qaflow-media://` fallback. main.js boot: `await ensureBucket(...)` next to the API boot (failure = warning, not crash).
 - [ ] Step 4: `npm test` + `npm run smoke` green. Commit `feat: run media uploads to supabase storage with signed playback urls`.
 
 ### Task 4: Auth module + login gating + cloud wiring in main
