@@ -198,11 +198,18 @@ you can work with the project's GitHub repo without leaving the app:
 2. **Working Copy** shows staged and unstaged files with one-click
    Stage / Unstage / Discard, a per-file diff view, and a commit box.
    Commits are authored as your signed-in account.
-3. **History** shows the commit graph (branches and merges drawn as lanes),
-   and clicking a commit lists its changed files with full diffs.
+3. **History** shows the commit graph (branches and merges drawn as lanes)
+   with branch labels pinned to their tip commits, an "Uncommitted changes"
+   row when your working copy is dirty, and clicking a commit lists its
+   changed files with full line-numbered diffs.
 4. The left rail lists branches — click to switch; clicking a
    **remote-only** branch checks it out locally. Create branches inline.
-5. Toolbar: **Pull**, **Push**, **Fetch** against `origin`.
+5. Toolbar: **Pull**, **Push**, **Fetch** against `origin` — with ahead (↑)
+   and behind (↓) counters showing how far you've diverged, and a summary
+   strip up top (repo, branch, clean/dirty state, last commit).
+6. Project cards on the **Projects** screen show a branch chip for any
+   project with a connected repo — click it to jump straight into the
+   client on that project.
 
 Each device keeps its own working copy (under the app's data folder); the
 clone is per-machine even though the rest of the workspace is shared.

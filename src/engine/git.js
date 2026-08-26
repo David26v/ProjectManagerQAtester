@@ -190,6 +190,79 @@ async function branches(dir) {
   };
 }
 
+// Tip oids for every local and origin branch — the renderer pins these as
+// ref badges on matching rows of the commit graph (Sourcetree's branch
+// labels). HEAD's tip is implied by `branches().current`.
+async function branchTips(dir) {
+  const { local, remote } = await branches(dir);
+  const tips = [];
+  for (const name of local) {
+    try {
+      const oid = await git.resolveRef({ fs, dir, ref: `refs/heads/${name}` });
+      tips.push({ name, oid, kind: 'local' });
+    } catch {
+      // ref vanished between listing and resolving — skip
+    }
+  }
+  for (const name of remote) {
+    try {
+      const oid = await git.resolveRef({ fs, dir, ref: `refs/remotes/origin/${name}` });
+      tips.push({ name: `origin/${name}`, oid, kind: 'remote' });
+    } catch {
+      // ditto
+    }
+  }
+  return tips;
+}
+
+// How far the current branch has diverged from its origin counterpart —
+// drawn as the ↑ / ↓ counters on the Push / Pull buttons. Depth-limited
+// set difference (500 commits is far beyond any badge worth reading);
+// returns null when there is no upstream to compare against.
+async function aheadBehind(dir) {
+  const current = await git.currentBranch({ fs, dir, fullname: false });
+  if (!current) return null;
+
+  let localLog;
+  let remoteLog;
+  try {
+    [localLog, remoteLog] = await Promise.all([
+      git.log({ fs, dir, ref: current, depth: 500 }),
+      git.log({ fs, dir, ref: `origin/${current}`, depth: 500 }),
+    ]);
+  } catch {
+    return null;
+  }
+
+  const localOids = new Set(localLog.map((c) => c.oid));
+  const remoteOids = new Set(remoteLog.map((c) => c.oid));
+  return {
+    ahead: localLog.filter((c) => !remoteOids.has(c.oid)).length,
+    behind: remoteLog.filter((c) => !localOids.has(c.oid)).length,
+  };
+}
+
+// Lightweight per-project repo summary for project pickers and cards —
+// cheap checks only (no statusMatrix), safe to run for every project at
+// once.
+async function overview(baseDir, projectIds) {
+  const result = {};
+  for (const id of projectIds) {
+    const dir = repoDirFor(baseDir, id);
+    if (!isCloned(dir)) {
+      result[id] = { cloned: false };
+      continue;
+    }
+    try {
+      const current = await git.currentBranch({ fs, dir, fullname: false });
+      result[id] = { cloned: true, branch: current || null };
+    } catch {
+      result[id] = { cloned: true, branch: null };
+    }
+  }
+  return result;
+}
+
 // Checking out a branch that only exists on origin creates a local tracking
 // branch first — the everyday Sourcetree double-click-a-remote-branch flow.
 async function checkout({ dir, ref }) {
@@ -317,6 +390,9 @@ module.exports = {
   pull,
   push,
   status,
+  branchTips,
+  aheadBehind,
+  overview,
   stage,
   unstage,
   discard,

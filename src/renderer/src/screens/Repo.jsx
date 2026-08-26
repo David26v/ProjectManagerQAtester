@@ -11,6 +11,9 @@ import {
   Check,
   KeyRound,
   FolderGit2,
+  ArrowUp,
+  ArrowDown,
+  Pencil,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +24,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/lib/toast';
 import { computeGraph, laneColor } from '@/lib/commitGraph';
 import { timeAgo } from '@/lib/format';
+import { navigate } from '@/hooks/useHashRoute';
 import { cn } from '@/lib/utils';
 
 const LANE_W = 14;
@@ -62,6 +66,56 @@ function GraphCell({ row, maxLanes }) {
   );
 }
 
+// Sourcetree-style ref badges pinned to the commit that a branch tip points
+// at. Local branches read solid, origin refs read outlined; at most two are
+// shown inline with a "+n" overflow so long rows stay readable.
+function RefBadges({ refs, current }) {
+  if (!refs || refs.length === 0) return null;
+  const sorted = [...refs].sort((a, b) => (a.name === current ? -1 : b.name === current ? 1 : a.kind === 'local' ? -1 : 1));
+  const shown = sorted.slice(0, 2);
+  const extra = sorted.length - shown.length;
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {shown.map((r) => (
+        <span
+          key={`${r.kind}-${r.name}`}
+          title={r.name}
+          className={cn(
+            'flex max-w-32 items-center gap-0.5 truncate rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none',
+            r.name === current
+              ? 'bg-primary text-primary-foreground'
+              : r.kind === 'local'
+                ? 'bg-accent text-primary'
+                : 'border border-border text-muted-foreground'
+          )}
+        >
+          <GitBranch className="h-2.5 w-2.5 shrink-0" />
+          <span className="truncate">{r.name}</span>
+        </span>
+      ))}
+      {extra > 0 && <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">+{extra}</span>}
+    </span>
+  );
+}
+
+function initialsOf(name) {
+  const parts = String(name || '?').trim().split(/\s+/);
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?';
+}
+
+function diffTotals(diff) {
+  if (!diff?.hunks) return null;
+  let adds = 0;
+  let dels = 0;
+  for (const h of diff.hunks) {
+    for (const line of h.lines) {
+      if (line.startsWith('+')) adds += 1;
+      else if (line.startsWith('-')) dels += 1;
+    }
+  }
+  return { adds, dels };
+}
+
 function DiffView({ diff }) {
   if (!diff) return <div className="p-6 text-sm text-muted-foreground">Select a file to see its changes.</div>;
   if (diff.binary) return <div className="p-6 text-sm text-muted-foreground">Binary file — no text diff.</div>;
@@ -71,23 +125,53 @@ function DiffView({ diff }) {
 
   return (
     <div className="overflow-x-auto font-mono text-xs leading-relaxed">
-      {diff.hunks.map((h, i) => (
-        <div key={i} className="mb-2">
-          <div className="bg-secondary/70 px-3 py-1 text-muted-foreground">{h.header}</div>
-          {h.lines.map((line, j) => (
-            <div
-              key={j}
-              className={cn(
-                'whitespace-pre px-3',
-                line.startsWith('+') && 'bg-success-bg text-success',
-                line.startsWith('-') && 'bg-danger-bg text-danger'
-              )}
-            >
-              {line || ' '}
-            </div>
-          ))}
-        </div>
-      ))}
+      {diff.hunks.map((h, i) => {
+        const m = /@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(h.header) || [];
+        let oldNo = Number(m[1] || 1);
+        let newNo = Number(m[2] || 1);
+        return (
+          <div key={i} className="mb-2">
+            <div className="bg-secondary/70 px-3 py-1 text-muted-foreground">{h.header}</div>
+            {h.lines.map((line, j) => {
+              const isAdd = line.startsWith('+');
+              const isDel = line.startsWith('-');
+              const left = isAdd ? '' : oldNo++;
+              const right = isDel ? '' : newNo++;
+              return (
+                <div
+                  key={j}
+                  className={cn('flex', isAdd && 'bg-success-bg text-success', isDel && 'bg-danger-bg text-danger')}
+                >
+                  <span className="w-10 shrink-0 select-none border-r border-border/60 pr-1.5 text-right text-muted-foreground/60 tabular-nums">
+                    {left}
+                  </span>
+                  <span className="w-10 shrink-0 select-none border-r border-border/60 pr-1.5 text-right text-muted-foreground/60 tabular-nums">
+                    {right}
+                  </span>
+                  <span className="whitespace-pre pl-3">{line || ' '}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DiffPanel({ selectedFile, diff }) {
+  const totals = diffTotals(diff);
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <span className="truncate font-mono text-xs text-muted-foreground">{selectedFile ? selectedFile.filepath : 'Diff'}</span>
+        {totals && (
+          <span className="shrink-0 pl-3 font-mono text-xs tabular-nums">
+            <span className="text-success">+{totals.adds}</span> <span className="text-danger">−{totals.dels}</span>
+          </span>
+        )}
+      </div>
+      <DiffView diff={selectedFile ? diff : null} />
     </div>
   );
 }
@@ -122,17 +206,28 @@ function FileRow({ file, selected, onSelect, actions }) {
   );
 }
 
-// `#/repo` — the embedded Sourcetree-style git client. One local working
-// copy per project per device; the GitHub token is stored encrypted
-// device-side and never shown back.
-export function Repo({ data }) {
+function repoSlug(url) {
+  const m = /([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(url || '');
+  return m ? m[1] : url || '';
+}
+
+// `#/repo?project=<id>` — the embedded Sourcetree-style git client. The
+// selected project lives in the hash query so switching screens (or linking
+// from a project card) lands back on the same repo. One local working copy
+// per project per device; the GitHub token is stored encrypted device-side
+// and never shown back.
+export function Repo({ data, route }) {
   const { projects } = data;
   const toast = useToast();
 
-  const [projectId, setProjectId] = useState(projects[0]?.id || '');
+  const projectId = route?.query?.project && projects.some((p) => p.id === route.query.project)
+    ? route.query.project
+    : projects[0]?.id || '';
+
   const [info, setInfo] = useState(null);
   const [view, setView] = useState('working');
   const [busy, setBusy] = useState(null);
+  const [repoOverview, setRepoOverview] = useState({});
 
   // clone form
   const [cloneUrl, setCloneUrl] = useState('');
@@ -156,9 +251,14 @@ export function Repo({ data }) {
   // branches
   const [newBranchName, setNewBranchName] = useState('');
 
-  useEffect(() => {
-    if (!projectId && projects[0]) setProjectId(projects[0].id);
-  }, [projects, projectId]);
+  const loadOverview = useCallback(async () => {
+    if (!projects.length) return;
+    try {
+      setRepoOverview(await window.qaflow.repo.overview(projects.map((p) => p.id)));
+    } catch {
+      // markers are cosmetic — ignore
+    }
+  }, [projects]);
 
   const loadInfo = useCallback(async () => {
     if (!projectId) return;
@@ -192,8 +292,13 @@ export function Repo({ data }) {
     setSelectedCommit(null);
     setHistory([]);
     setStatus({ staged: [], unstaged: [] });
+    setCloneUrl('');
     loadInfo();
   }, [projectId, loadInfo]);
+
+  useEffect(() => {
+    loadOverview();
+  }, [loadOverview]);
 
   useEffect(() => {
     if (info?.cloned) loadWorkbench();
@@ -208,6 +313,15 @@ export function Repo({ data }) {
 
   const graph = useMemo(() => computeGraph(history), [history]);
 
+  // oid → ref badges, from branch tips
+  const refsByOid = useMemo(() => {
+    const map = {};
+    for (const tip of info?.tips || []) {
+      (map[tip.oid] = map[tip.oid] || []).push(tip);
+    }
+    return map;
+  }, [info?.tips]);
+
   async function run(key, fn, { successMsg = null, refresh = true } = {}) {
     setBusy(key);
     try {
@@ -216,6 +330,7 @@ export function Repo({ data }) {
       if (refresh) {
         await loadInfo();
         await loadWorkbench();
+        await loadOverview();
       }
     } catch (e) {
       toast(e.message, 'error');
@@ -283,10 +398,27 @@ export function Repo({ data }) {
 
   const project = projects.find((p) => p.id === projectId);
   const selectedCommitMeta = history.find((c) => c.oid === selectedCommit);
+  const changeCount = status.staged.length + status.unstaged.length;
+  const ahead = info?.aheadBehind?.ahead || 0;
+  const behind = info?.aheadBehind?.behind || 0;
 
   if (!projects.length) {
     return <EmptyScreen title="No projects yet" subtitle="Create a project first — each project gets its own repository connection." />;
   }
+
+  const projectPicker = (
+    <Select value={projectId} onChange={(e) => navigate(`/repo?project=${e.target.value}`)} className="w-60">
+      {projects.map((p) => {
+        const ov = repoOverview[p.id];
+        return (
+          <option key={p.id} value={p.id}>
+            {p.name}
+            {ov?.cloned ? `  ⎇ ${ov.branch || 'detached'}` : '  — not connected'}
+          </option>
+        );
+      })}
+    </Select>
+  );
 
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -294,13 +426,7 @@ export function Repo({ data }) {
         <h1 className="text-2xl font-semibold text-foreground">Repository</h1>
         <p className="mt-1 text-sm text-muted-foreground">Built-in git client — clone, branch, commit, pull and push without leaving the app.</p>
       </div>
-      <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-56">
-        {projects.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </Select>
+      {projectPicker}
     </div>
   );
 
@@ -346,7 +472,15 @@ export function Repo({ data }) {
             </div>
             {busy === 'clone' && (
               <div className="rounded-md bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
-                Cloning{cloneProgress ? ` — ${cloneProgress.phase}${pct != null ? ` (${pct}%)` : ''}` : '…'}
+                <div className="flex items-center justify-between">
+                  <span>Cloning{cloneProgress ? ` — ${cloneProgress.phase}` : '…'}</span>
+                  {pct != null && <span className="tabular-nums">{pct}%</span>}
+                </div>
+                {pct != null && (
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border">
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                )}
               </div>
             )}
             <Button className="self-start" onClick={doClone} disabled={busy === 'clone' || !cloneUrl.trim()}>
@@ -361,33 +495,82 @@ export function Repo({ data }) {
   // ---- cloned: the workbench ----
   const branches = info.branches || { current: null, local: [], remote: [] };
   const remoteOnly = branches.remote.filter((b) => !branches.local.includes(b));
+  const lastCommit = history[0];
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
       {header}
 
+      {/* repo summary strip */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
+            <FolderGit2 className="h-4.5 w-4.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-foreground">{repoSlug(info.url)}</div>
+            <div className="truncate text-xs text-muted-foreground">{info.url}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-xs font-medium text-primary">
+            <GitBranch className="h-3.5 w-3.5" /> {branches.current || 'detached'}
+          </span>
+          {(ahead > 0 || behind > 0) && (
+            <span className="flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 font-mono text-xs tabular-nums text-muted-foreground" title={`${ahead} to push · ${behind} to pull`}>
+              {ahead > 0 && (
+                <span className="flex items-center text-success">
+                  <ArrowUp className="h-3 w-3" />
+                  {ahead}
+                </span>
+              )}
+              {behind > 0 && (
+                <span className="flex items-center text-warning">
+                  <ArrowDown className="h-3 w-3" />
+                  {behind}
+                </span>
+              )}
+            </span>
+          )}
+          <span className={cn('rounded-full px-2.5 py-1 text-xs font-medium', changeCount ? 'bg-warning-bg text-warning' : 'bg-success-bg text-success')}>
+            {changeCount ? `${changeCount} change${changeCount === 1 ? '' : 's'}` : 'Clean'}
+          </span>
+        </div>
+        {lastCommit && (
+          <div className="ml-auto hidden min-w-0 items-center gap-2 lg:flex">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-semibold text-muted-foreground">
+              {initialsOf(lastCommit.author)}
+            </div>
+            <div className="min-w-0 text-right">
+              <div className="max-w-72 truncate text-xs font-medium text-foreground">{lastCommit.summary}</div>
+              <div className="text-[11px] text-muted-foreground">
+                {lastCommit.author} · {timeAgo(lastCommit.timestamp)}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => run('pull', () => window.qaflow.repo.pull(projectId), { successMsg: 'Pulled latest changes.' })} disabled={Boolean(busy)}>
           <Download className="h-4 w-4" /> {busy === 'pull' ? 'Pulling…' : 'Pull'}
+          {behind > 0 && <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold tabular-nums text-primary">{behind}</span>}
         </Button>
         <Button variant="outline" size="sm" onClick={() => run('push', () => window.qaflow.repo.push(projectId), { successMsg: 'Pushed to origin.' })} disabled={Boolean(busy)}>
           <Upload className="h-4 w-4" /> {busy === 'push' ? 'Pushing…' : 'Push'}
+          {ahead > 0 && <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold tabular-nums text-primary">{ahead}</span>}
         </Button>
         <Button variant="outline" size="sm" onClick={() => run('fetch', () => window.qaflow.repo.fetch(projectId), { successMsg: 'Fetched from origin.' })} disabled={Boolean(busy)}>
           <RefreshCw className="h-4 w-4" /> {busy === 'fetch' ? 'Fetching…' : 'Fetch'}
         </Button>
-        <div className="mx-2 h-5 w-px bg-border" />
-        <span className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-xs font-medium text-primary">
-          <GitBranch className="h-3.5 w-3.5" /> {branches.current || 'detached'}
-        </span>
         <div className="flex-1" />
         <div className="flex gap-1 rounded-md bg-secondary p-0.5">
           <button
             onClick={() => setView('working')}
             className={cn('rounded px-3 py-1 text-xs font-medium', view === 'working' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}
           >
-            Working Copy {status.staged.length + status.unstaged.length > 0 && `(${status.staged.length + status.unstaged.length})`}
+            Working Copy {changeCount > 0 && `(${changeCount})`}
           </button>
           <button
             onClick={() => setView('history')}
@@ -567,16 +750,31 @@ export function Repo({ data }) {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
-              <div className="border-b border-border px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                {selectedFile ? selectedFile.filepath : 'Diff'}
-              </div>
-              <DiffView diff={selectedFile ? diff : null} />
-            </div>
+            <DiffPanel selectedFile={selectedFile} diff={diff} />
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 gap-4">
             <div className="min-h-0 w-[46%] shrink-0 overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
+              {changeCount > 0 && (
+                <div
+                  onClick={() => setView('working')}
+                  className="flex cursor-pointer items-center border-b border-border/60 pr-3 hover:bg-secondary/60"
+                  style={{ height: ROW_H }}
+                  title="Open the working copy"
+                >
+                  <svg width={graph.maxLanes * LANE_W} height={ROW_H} className="shrink-0" aria-hidden="true">
+                    <line x1={LANE_W / 2} y1={ROW_H / 2} x2={LANE_W / 2} y2={ROW_H} stroke="var(--color-border)" strokeWidth="2" strokeDasharray="3 3" />
+                    <circle cx={LANE_W / 2} cy={ROW_H / 2} r="4.5" fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeDasharray="2 2" />
+                  </svg>
+                  <div className="min-w-0 flex-1 pl-1">
+                    <div className="truncate text-sm italic text-muted-foreground">Uncommitted changes</div>
+                    <div className="text-xs text-muted-foreground/70">
+                      {status.staged.length} staged · {status.unstaged.length} unstaged
+                    </div>
+                  </div>
+                  <Pencil className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                </div>
+              )}
               {history.length === 0 && <div className="p-6 text-sm text-muted-foreground">No commits yet.</div>}
               {graph.rows.map((row, i) => {
                 const c = history[i];
@@ -592,8 +790,11 @@ export function Repo({ data }) {
                   >
                     <GraphCell row={row} maxLanes={graph.maxLanes} />
                     <div className="min-w-0 flex-1 pl-1">
-                      <div className={cn('truncate text-sm', selectedCommit === row.oid ? 'font-medium text-primary' : 'text-foreground')}>
-                        {c.summary}
+                      <div className="flex items-center gap-1.5">
+                        <RefBadges refs={refsByOid[row.oid]} current={branches.current} />
+                        <span className={cn('truncate text-sm', selectedCommit === row.oid ? 'font-medium text-primary' : 'text-foreground')}>
+                          {c.summary}
+                        </span>
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
                         {c.author} · {timeAgo(c.timestamp)} · <span className="font-mono">{c.oid.slice(0, 7)}</span>
@@ -608,10 +809,17 @@ export function Repo({ data }) {
               {selectedCommitMeta ? (
                 <>
                   <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-                    <div className="text-sm font-semibold text-foreground">{selectedCommitMeta.summary}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {selectedCommitMeta.author} &lt;{selectedCommitMeta.email}&gt; · {new Date(selectedCommitMeta.timestamp).toLocaleString()} ·{' '}
-                      <span className="font-mono">{selectedCommitMeta.oid.slice(0, 10)}</span>
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-muted-foreground">
+                        {initialsOf(selectedCommitMeta.author)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-foreground">{selectedCommitMeta.summary}</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {selectedCommitMeta.author} &lt;{selectedCommitMeta.email}&gt; · {new Date(selectedCommitMeta.timestamp).toLocaleString()} ·{' '}
+                          <span className="font-mono">{selectedCommitMeta.oid.slice(0, 10)}</span>
+                        </div>
+                      </div>
                     </div>
                     {selectedCommitMeta.message.trim() !== selectedCommitMeta.summary && (
                       <pre className="mt-2 whitespace-pre-wrap font-sans text-xs text-muted-foreground">
@@ -630,12 +838,7 @@ export function Repo({ data }) {
                       {commitFileList.length === 0 && <div className="py-1 text-xs text-muted-foreground">Loading changed files…</div>}
                     </div>
                   </div>
-                  <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
-                    <div className="border-b border-border px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                      {selectedFile ? selectedFile.filepath : 'Diff'}
-                    </div>
-                    <DiffView diff={selectedFile ? diff : null} />
-                  </div>
+                  <DiffPanel selectedFile={selectedFile} diff={diff} />
                 </>
               ) : (
                 <div className="flex flex-1 items-center justify-center rounded-xl border border-border bg-card text-sm text-muted-foreground shadow-sm">

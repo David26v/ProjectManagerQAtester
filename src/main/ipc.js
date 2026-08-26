@@ -715,8 +715,17 @@ function registerIpc({
     const url = await repoUrlFor(projectId);
     const cloned = gitEngine.isCloned(dir);
     if (!cloned) return { cloned, url, hasToken: Boolean(readGithubToken()) };
-    const branches = await gitEngine.branches(dir);
-    return { cloned, url, hasToken: Boolean(readGithubToken()), branches };
+    const [branches, tips, aheadBehind] = await Promise.all([
+      gitEngine.branches(dir),
+      gitEngine.branchTips(dir),
+      gitEngine.aheadBehind(dir),
+    ]);
+    return { cloned, url, hasToken: Boolean(readGithubToken()), branches, tips, aheadBehind };
+  });
+
+  handle('repo:overview', async (projectIds) => {
+    if (!baseDir) throw new Error('Repository features are unavailable in this context');
+    return gitEngine.overview(baseDir, Array.isArray(projectIds) ? projectIds : []);
   });
 
   handle('repo:clone', async ({ projectId, url } = {}) => {

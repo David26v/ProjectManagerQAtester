@@ -83,6 +83,7 @@ contextBridge.exposeInMainWorld('qaflow', {
   },
   repo: {
     info: invoke('repo:info'),
+    overview: invoke('repo:overview'),
     clone: invoke('repo:clone'),
     status: invoke('repo:status'),
     log: invoke('repo:log'),

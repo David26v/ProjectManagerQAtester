@@ -245,7 +245,7 @@ function Screen({ route, data, onNewProject, startRun }) {
     return <Kanban data={data} />;
   }
 
-  if (top === 'repo') return <Repo data={data} />;
+  if (top === 'repo') return <Repo data={data} route={route} />;
 
   if (top === 'settings') return <Settings data={data} />;
 

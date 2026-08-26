@@ -164,6 +164,63 @@ test('git engine: workingDiff shows uncommitted edits and flags binary', async (
   assert.equal(bin.binary, true);
 });
 
+test('git engine: branchTips maps names to tip oids', async () => {
+  const dir = await makeRepo();
+  write(dir, 'f.txt', '1\n');
+  await gitEngine.stage(dir, 'f.txt');
+  await gitEngine.commit({ dir, message: 'base', author: AUTHOR });
+  await gitEngine.createBranch({ dir, name: 'topic' });
+  write(dir, 'f.txt', '1\n2\n');
+  await gitEngine.stage(dir, 'f.txt');
+  const topicOid = await gitEngine.commit({ dir, message: 'topic work', author: AUTHOR });
+
+  const tips = await gitEngine.branchTips(dir);
+  const byName = Object.fromEntries(tips.map((t) => [t.name, t]));
+  assert.equal(byName['topic'].oid, topicOid);
+  assert.equal(byName['topic'].kind, 'local');
+  assert.ok(byName['main']);
+  assert.notEqual(byName['main'].oid, topicOid);
+});
+
+test('git engine: aheadBehind counts divergence from origin', async () => {
+  const dir = await makeRepo();
+  write(dir, 'f.txt', '1\n');
+  await gitEngine.stage(dir, 'f.txt');
+  const baseOid = await gitEngine.commit({ dir, message: 'base', author: AUTHOR });
+
+  // Fake an origin tracking ref pinned at the base commit, then move main
+  // one commit past it — ahead 1, behind 0.
+  await isogit.writeRef({ fs, dir, ref: 'refs/remotes/origin/main', value: baseOid, force: true });
+  write(dir, 'f.txt', '1\n2\n');
+  await gitEngine.stage(dir, 'f.txt');
+  await gitEngine.commit({ dir, message: 'local only', author: AUTHOR });
+
+  const ab = await gitEngine.aheadBehind(dir);
+  assert.deepEqual(ab, { ahead: 1, behind: 0 });
+});
+
+test('git engine: aheadBehind is null with no origin counterpart', async () => {
+  const dir = await makeRepo();
+  write(dir, 'f.txt', '1\n');
+  await gitEngine.stage(dir, 'f.txt');
+  await gitEngine.commit({ dir, message: 'base', author: AUTHOR });
+  assert.equal(await gitEngine.aheadBehind(dir), null);
+});
+
+test('git engine: overview reports cloned state and branch per project', async () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'qaflow-gitov-'));
+  const dir = gitEngine.repoDirFor(base, 'p1');
+  fs.mkdirSync(dir, { recursive: true });
+  await isogit.init({ fs, dir, defaultBranch: 'main' });
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'x\n');
+  await gitEngine.stage(dir, 'a.txt');
+  await gitEngine.commit({ dir, message: 'base', author: AUTHOR });
+
+  const ov = await gitEngine.overview(base, ['p1', 'p2']);
+  assert.deepEqual(ov.p1, { cloned: true, branch: 'main' });
+  assert.deepEqual(ov.p2, { cloned: false });
+});
+
 test('git engine: repoDirFor and isCloned', async () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'qaflow-gitbase-'));
   const dir = gitEngine.repoDirFor(base, 'proj-1');
