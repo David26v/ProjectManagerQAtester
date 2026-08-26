@@ -11,13 +11,13 @@ const gitEngine = require('../src/engine/git.js');
 
 const AUTHOR = { name: 'Test QA', email: 'qa@test.local' };
 
-async function makeRepo() {
+const makeRepo = async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qaflow-git-'));
   await isogit.init({ fs, dir, defaultBranch: 'main' });
   return dir;
 }
 
-function write(dir, file, content) {
+const write = (dir, file, content) => {
   fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
   fs.writeFileSync(path.join(dir, file), content);
 }

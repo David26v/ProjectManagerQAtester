@@ -3,7 +3,7 @@
 // every item behind one `Promise.all` so grids/galleries do a single pass
 // instead of one IPC round trip per render.
 
-export async function resolveMediaUrls(runId, mediaList = [], extra = {}) {
+export const resolveMediaUrls = async (runId, mediaList = [], extra = {}) => {
   if (!runId) return {};
   const entries = await Promise.all(
     (mediaList || []).map(async (m) => [m.id, await window.qaflow.app.mediaUrl(runId, m.path)])
@@ -18,7 +18,7 @@ export async function resolveMediaUrls(runId, mediaList = [], extra = {}) {
 // runs open their folder in the file manager; cloud runs (media in Supabase
 // Storage, local dir already reclaimed) get a signed playback URL copied to
 // the clipboard instead. `toast` is the caller's useToast() function.
-export async function openRunFolder(runId, toast) {
+export const openRunFolder = async (runId, toast) => {
   try {
     const result = await window.qaflow.runs.openDir(runId);
     if (result?.cloud) {
@@ -36,7 +36,7 @@ export async function openRunFolder(runId, toast) {
   }
 }
 
-export function shortRunId(runId) {
+export const shortRunId = (runId) => {
   if (!runId) return '—';
   const hex = String(runId).split('-').pop();
   return `#${hex.toUpperCase()}`;

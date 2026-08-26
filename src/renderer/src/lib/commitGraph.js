@@ -14,7 +14,7 @@
 // incoming lane's top into the dot, and curves from the dot out to each
 // parent lane's bottom.
 
-export function computeGraph(commits) {
+export const computeGraph = (commits) => {
   const lanes = []; // lanes[i] = the oid this lane is waiting to reach, or null (free)
   const rows = [];
   let maxLanes = 1;
@@ -73,6 +73,6 @@ export function computeGraph(commits) {
 
 export const LANE_COLORS = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#db2777', '#65a30d'];
 
-export function laneColor(index) {
+export const laneColor = (index) => {
   return LANE_COLORS[index % LANE_COLORS.length];
 }

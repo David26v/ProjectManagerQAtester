@@ -33,7 +33,7 @@ const ROW_H = 44;
 // Per-row slice of the commit graph — verticals for lanes passing through,
 // curves from incoming lanes into the dot, curves from the dot out to each
 // parent's lane. Rows stack, so segments meet exactly at row boundaries.
-function GraphCell({ row, maxLanes }) {
+const GraphCell = ({ row, maxLanes }) => {
   const cx = (i) => i * LANE_W + LANE_W / 2;
   const H = ROW_H;
   const width = maxLanes * LANE_W;
@@ -69,7 +69,7 @@ function GraphCell({ row, maxLanes }) {
 // Sourcetree-style ref badges pinned to the commit that a branch tip points
 // at. Local branches read solid, origin refs read outlined; at most two are
 // shown inline with a "+n" overflow so long rows stay readable.
-function RefBadges({ refs, current }) {
+const RefBadges = ({ refs, current }) => {
   if (!refs || refs.length === 0) return null;
   const sorted = [...refs].sort((a, b) => (a.name === current ? -1 : b.name === current ? 1 : a.kind === 'local' ? -1 : 1));
   const shown = sorted.slice(0, 2);
@@ -98,12 +98,12 @@ function RefBadges({ refs, current }) {
   );
 }
 
-function initialsOf(name) {
+const initialsOf = (name) => {
   const parts = String(name || '?').trim().split(/\s+/);
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?';
 }
 
-function diffTotals(diff) {
+const diffTotals = (diff) => {
   if (!diff?.hunks) return null;
   let adds = 0;
   let dels = 0;
@@ -116,7 +116,7 @@ function diffTotals(diff) {
   return { adds, dels };
 }
 
-function DiffView({ diff }) {
+const DiffView = ({ diff }) => {
   if (!diff) return <div className="p-6 text-sm text-muted-foreground">Select a file to see its changes.</div>;
   if (diff.binary) return <div className="p-6 text-sm text-muted-foreground">Binary file — no text diff.</div>;
   if (diff.tooLarge) return <div className="p-6 text-sm text-muted-foreground">File too large to diff.</div>;
@@ -159,7 +159,7 @@ function DiffView({ diff }) {
   );
 }
 
-function DiffPanel({ selectedFile, diff }) {
+const DiffPanel = ({ selectedFile, diff }) => {
   const totals = diffTotals(diff);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
@@ -176,7 +176,7 @@ function DiffPanel({ selectedFile, diff }) {
   );
 }
 
-function stateBadge(state) {
+const stateBadge = (state) => {
   const map = {
     added: ['A', 'text-success'],
     untracked: ['?', 'text-success'],
@@ -188,7 +188,7 @@ function stateBadge(state) {
   return <span className={cn('w-4 shrink-0 text-center font-mono text-xs font-bold', cls)}>{letter}</span>;
 }
 
-function FileRow({ file, selected, onSelect, actions }) {
+const FileRow = ({ file, selected, onSelect, actions }) => {
   return (
     <div
       className={cn(
@@ -206,7 +206,7 @@ function FileRow({ file, selected, onSelect, actions }) {
   );
 }
 
-function repoSlug(url) {
+const repoSlug = (url) => {
   const m = /([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(url || '');
   return m ? m[1] : url || '';
 }
@@ -216,7 +216,7 @@ function repoSlug(url) {
 // from a project card) lands back on the same repo. One local working copy
 // per project per device; the GitHub token is stored encrypted device-side
 // and never shown back.
-export function Repo({ data, route }) {
+export const Repo = ({ data, route }) => {
   const { projects } = data;
   const toast = useToast();
 
@@ -322,7 +322,7 @@ export function Repo({ data, route }) {
     return map;
   }, [info?.tips]);
 
-  async function run(key, fn, { successMsg = null, refresh = true } = {}) {
+  const run = async (key, fn, { successMsg = null, refresh = true } = {}) => {
     setBusy(key);
     try {
       await fn();
@@ -339,7 +339,7 @@ export function Repo({ data, route }) {
     }
   }
 
-  async function doClone() {
+  const doClone = async () => {
     if (tokenInput.trim()) {
       await window.qaflow.repo.saveAuth({ token: tokenInput.trim() });
       setTokenInput('');
@@ -351,7 +351,7 @@ export function Repo({ data, route }) {
     setCloneProgress(null);
   }
 
-  async function openWorkingFile(file) {
+  const openWorkingFile = async (file) => {
     setSelectedFile({ filepath: file.filepath, oid: null });
     setDiff(null);
     try {
@@ -361,7 +361,7 @@ export function Repo({ data, route }) {
     }
   }
 
-  async function openCommit(oid) {
+  const openCommit = async (oid) => {
     setSelectedCommit(oid);
     setSelectedFile(null);
     setDiff(null);
@@ -373,7 +373,7 @@ export function Repo({ data, route }) {
     }
   }
 
-  async function openCommitFile(oid, file) {
+  const openCommitFile = async (oid, file) => {
     setSelectedFile({ filepath: file.filepath, oid });
     setDiff(null);
     try {
@@ -383,7 +383,7 @@ export function Repo({ data, route }) {
     }
   }
 
-  async function doCommit() {
+  const doCommit = async () => {
     if (!status.staged.length) {
       toast('Stage at least one file first.', 'warning');
       return;

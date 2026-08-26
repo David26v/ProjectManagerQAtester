@@ -20,23 +20,23 @@ const { structuredPatch } = require('diff');
 
 const MAX_DIFF_BYTES = 1024 * 1024; // beyond this a diff view stops being useful
 
-function repoDirFor(baseDir, projectId) {
+const repoDirFor = (baseDir, projectId) => {
   return path.join(baseDir, 'repos', projectId);
 }
 
-function isCloned(dir) {
+const isCloned = (dir) => {
   return fs.existsSync(path.join(dir, '.git'));
 }
 
 // GitHub over HTTPS accepts a PAT as the password with any username;
 // 'x-access-token' is the documented convention. Also works for fine-grained
 // tokens and for most other Git hosts that accept token-as-password.
-function onAuthFor(token) {
+const onAuthFor = (token) => {
   if (!token) return undefined;
   return () => ({ username: 'x-access-token', password: token });
 }
 
-async function clone({ dir, url, token, onProgress = null }) {
+const clone = async ({ dir, url, token, onProgress = null }) => {
   fs.mkdirSync(dir, { recursive: true });
   await git.clone({
     fs,
@@ -50,14 +50,14 @@ async function clone({ dir, url, token, onProgress = null }) {
   });
 }
 
-async function fetch({ dir, token }) {
+const fetch = async ({ dir, token }) => {
   await git.fetch({ fs, http, dir, onAuth: onAuthFor(token), prune: true });
 }
 
 // Remote and remoteRef are passed explicitly: a local branch created by our
 // `checkout` (from origin/<ref>) has no upstream merge config, and
 // isomorphic-git's defaults would refuse to guess.
-async function pull({ dir, token, author }) {
+const pull = async ({ dir, token, author }) => {
   const current = await git.currentBranch({ fs, dir, fullname: false });
   if (!current) throw new Error('Not on a branch (detached HEAD)');
   await git.pull({
@@ -73,7 +73,7 @@ async function pull({ dir, token, author }) {
   });
 }
 
-async function push({ dir, token }) {
+const push = async ({ dir, token }) => {
   const current = await git.currentBranch({ fs, dir, fullname: false });
   if (!current) throw new Error('Not on a branch (detached HEAD)');
   const result = await git.push({
@@ -93,7 +93,7 @@ async function push({ dir, token }) {
 // translate them into the two Sourcetree panes: staged (index differs from
 // HEAD) and unstaged (workdir differs from index). A file can appear in both
 // (staged, then edited again).
-async function status(dir) {
+const status = async (dir) => {
   const matrix = await git.statusMatrix({ fs, dir });
   const staged = [];
   const unstaged = [];
@@ -123,7 +123,7 @@ async function status(dir) {
   return { staged, unstaged };
 }
 
-async function stage(dir, filepath) {
+const stage = async (dir, filepath) => {
   const exists = fs.existsSync(path.join(dir, filepath));
   if (exists) {
     await git.add({ fs, dir, filepath });
@@ -132,13 +132,13 @@ async function stage(dir, filepath) {
   }
 }
 
-async function unstage(dir, filepath) {
+const unstage = async (dir, filepath) => {
   await git.resetIndex({ fs, dir, filepath });
 }
 
 // Restores the file to its HEAD state (Sourcetree's "Discard"). Untracked
 // files are simply deleted from the working copy.
-async function discard(dir, filepath) {
+const discard = async (dir, filepath) => {
   const head = await headOidFor(dir, filepath);
   if (head === null) {
     const abs = path.join(dir, filepath);
@@ -148,7 +148,7 @@ async function discard(dir, filepath) {
   await git.checkout({ fs, dir, filepaths: [filepath], force: true });
 }
 
-async function headOidFor(dir, filepath) {
+const headOidFor = async (dir, filepath) => {
   try {
     const oid = await git.resolveRef({ fs, dir, ref: 'HEAD' });
     await git.readBlob({ fs, dir, oid, filepath });
@@ -158,13 +158,13 @@ async function headOidFor(dir, filepath) {
   }
 }
 
-async function commit({ dir, message, author }) {
+const commit = async ({ dir, message, author }) => {
   if (!message || !message.trim()) throw new Error('Commit message is required');
   const oid = await git.commit({ fs, dir, message: message.trim(), author });
   return oid;
 }
 
-async function log({ dir, depth = 200, ref = 'HEAD' }) {
+const log = async ({ dir, depth = 200, ref = 'HEAD' }) => {
   const commits = await git.log({ fs, dir, depth, ref });
   return commits.map((c) => ({
     oid: c.oid,
@@ -177,7 +177,7 @@ async function log({ dir, depth = 200, ref = 'HEAD' }) {
   }));
 }
 
-async function branches(dir) {
+const branches = async (dir) => {
   const [local, remote, current] = await Promise.all([
     git.listBranches({ fs, dir }),
     git.listBranches({ fs, dir, remote: 'origin' }).catch(() => []),
@@ -193,7 +193,7 @@ async function branches(dir) {
 // Tip oids for every local and origin branch — the renderer pins these as
 // ref badges on matching rows of the commit graph (Sourcetree's branch
 // labels). HEAD's tip is implied by `branches().current`.
-async function branchTips(dir) {
+const branchTips = async (dir) => {
   const { local, remote } = await branches(dir);
   const tips = [];
   for (const name of local) {
@@ -219,7 +219,7 @@ async function branchTips(dir) {
 // drawn as the ↑ / ↓ counters on the Push / Pull buttons. Depth-limited
 // set difference (500 commits is far beyond any badge worth reading);
 // returns null when there is no upstream to compare against.
-async function aheadBehind(dir) {
+const aheadBehind = async (dir) => {
   const current = await git.currentBranch({ fs, dir, fullname: false });
   if (!current) return null;
 
@@ -245,7 +245,7 @@ async function aheadBehind(dir) {
 // Lightweight per-project repo summary for project pickers and cards —
 // cheap checks only (no statusMatrix), safe to run for every project at
 // once.
-async function overview(baseDir, projectIds) {
+const overview = async (baseDir, projectIds) => {
   const result = {};
   for (const id of projectIds) {
     const dir = repoDirFor(baseDir, id);
@@ -265,7 +265,7 @@ async function overview(baseDir, projectIds) {
 
 // Checking out a branch that only exists on origin creates a local tracking
 // branch first — the everyday Sourcetree double-click-a-remote-branch flow.
-async function checkout({ dir, ref }) {
+const checkout = async ({ dir, ref }) => {
   const { local } = await branches(dir);
   if (!local.includes(ref)) {
     await git.branch({ fs, dir, ref, object: `origin/${ref}` });
@@ -273,13 +273,13 @@ async function checkout({ dir, ref }) {
   await git.checkout({ fs, dir, ref });
 }
 
-async function createBranch({ dir, name }) {
+const createBranch = async ({ dir, name }) => {
   await git.branch({ fs, dir, ref: name, checkout: true });
 }
 
 // Files changed by a commit relative to its first parent (or everything for
 // a root commit) — walks the two trees comparing blob oids.
-async function commitFiles({ dir, oid }) {
+const commitFiles = async ({ dir, oid }) => {
   const { commit: meta } = await git.readCommit({ fs, dir, oid });
   const parent = meta.parent[0] || null;
 
@@ -312,12 +312,12 @@ async function commitFiles({ dir, oid }) {
   return results.sort((a, b) => a.filepath.localeCompare(b.filepath));
 }
 
-function looksBinary(buffer) {
+const looksBinary = (buffer) => {
   const scan = buffer.subarray(0, 8000);
   return scan.includes(0);
 }
 
-async function readAtRef(dir, filepath, ref) {
+const readAtRef = async (dir, filepath, ref) => {
   if (ref === 'WORKDIR') {
     const abs = path.join(dir, filepath);
     if (!fs.existsSync(abs)) return null;
@@ -332,7 +332,7 @@ async function readAtRef(dir, filepath, ref) {
   }
 }
 
-async function readAtCommit(dir, filepath, oid) {
+const readAtCommit = async (dir, filepath, oid) => {
   try {
     const { blob } = await git.readBlob({ fs, dir, oid, filepath });
     return Buffer.from(blob);
@@ -341,7 +341,7 @@ async function readAtCommit(dir, filepath, oid) {
   }
 }
 
-function toDiff(filepath, beforeBuf, afterBuf) {
+const toDiff = (filepath, beforeBuf, afterBuf) => {
   if ((beforeBuf && beforeBuf.length > MAX_DIFF_BYTES) || (afterBuf && afterBuf.length > MAX_DIFF_BYTES)) {
     return { filepath, tooLarge: true };
   }
@@ -362,7 +362,7 @@ function toDiff(filepath, beforeBuf, afterBuf) {
 
 // Diff of the working copy (or index) against HEAD for one file — powers the
 // Working Copy pane's diff view.
-async function workingDiff({ dir, filepath }) {
+const workingDiff = async ({ dir, filepath }) => {
   const [before, after] = await Promise.all([
     readAtRef(dir, filepath, 'HEAD'),
     readAtRef(dir, filepath, 'WORKDIR'),
@@ -372,7 +372,7 @@ async function workingDiff({ dir, filepath }) {
 
 // Diff of one file inside a commit against that commit's first parent —
 // powers the History pane's diff view.
-async function commitDiff({ dir, oid, filepath }) {
+const commitDiff = async ({ dir, oid, filepath }) => {
   const { commit: meta } = await git.readCommit({ fs, dir, oid });
   const parent = meta.parent[0] || null;
   const [before, after] = await Promise.all([

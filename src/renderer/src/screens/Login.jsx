@@ -9,13 +9,13 @@ import { useToast } from '@/lib/toast';
 // errors ("Invalid login credentials") surface as-is; there is deliberately
 // no signup or forgot-password link. Rendered by App.jsx INSTEAD of the app
 // shell whenever cloud auth is configured and no session is active.
-export function Login({ onLoggedIn }) {
+export const Login = ({ onLoggedIn }) => {
   const toast = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function submit(e) {
+  const submit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password) {
       toast('Enter your email and password.', 'warning');

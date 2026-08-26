@@ -3,7 +3,7 @@ import { Dialog, DialogClose } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { navigate } from '@/hooks/useHashRoute';
 
-function durationSeconds(report) {
+const durationSeconds = (report) => {
   const start = new Date(report.startedAt).getTime();
   const end = new Date(report.finishedAt).getTime();
   if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
@@ -15,7 +15,7 @@ function durationSeconds(report) {
 // verdict and step tally at a glance and chooses where to go next (details
 // vs. straight into the report builder for a failure) instead of being
 // teleported.
-export function RunCompletionModal({ report, onClose }) {
+export const RunCompletionModal = ({ report, onClose }) => {
   if (!report) return null;
 
   const failed = report.status === 'failed';
@@ -27,7 +27,7 @@ export function RunCompletionModal({ report, onClose }) {
   const consoleCount = (report.consoleErrors || []).length;
   const networkCount = (report.networkFailures || []).length;
 
-  function go(path) {
+  const go = (path) => {
     onClose();
     navigate(path);
   }
