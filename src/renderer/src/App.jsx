@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { EmptyScreen } from '@/components/EmptyScreen';
 import { NewProjectModal } from '@/components/NewProjectModal';
@@ -266,6 +266,50 @@ const CenteredNote = ({ children }) => {
   return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{children}</div>;
 }
 
+// Catches anything a screen throws — a render bug, or a lazy chunk that
+// failed to load (classic case: the renderer was rebuilt while the app was
+// open, so the old bundle asks for chunk filenames that no longer exist).
+// Without this, one broken screen unmounts the entire React tree and the
+// window goes blank. Keyed by route in AppShell so navigating away retries.
+// (A class, not an arrow — error boundaries are the one thing React still
+// only supports via class components.)
+class ScreenErrorBoundary extends Component {
+  state = { error: null };
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error) {
+    console.error('[qaflow] screen crashed:', error);
+  }
+
+  render() {
+    if (this.state.error) {
+      const chunkFailed = /dynamically imported module|Loading chunk|Failed to fetch/i.test(String(this.state.error));
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
+          <h2 className="text-lg font-semibold text-foreground">
+            {chunkFailed ? 'The app was updated behind this window' : 'This screen hit an error'}
+          </h2>
+          <p className="max-w-md text-sm text-muted-foreground">
+            {chunkFailed
+              ? 'A newer build replaced the files this window loaded from. Reload to pick up the new version.'
+              : String(this.state.error?.message || this.state.error)}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            Reload app
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const AppShell = ({ authStatus }) => {
   const route = useHashRoute();
   const data = useAppData();
@@ -301,9 +345,11 @@ const AppShell = ({ authStatus }) => {
         />
         <main className="flex-1 overflow-y-auto">
           {data.loaded ? (
-            <Suspense fallback={<CenteredNote>Loading…</CenteredNote>}>
-              <Screen route={route} data={data} onNewProject={() => setNewProjectOpen(true)} startRun={startRun} />
-            </Suspense>
+            <ScreenErrorBoundary key={route.path}>
+              <Suspense fallback={<CenteredNote>Loading…</CenteredNote>}>
+                <Screen route={route} data={data} onNewProject={() => setNewProjectOpen(true)} startRun={startRun} />
+              </Suspense>
+            </ScreenErrorBoundary>
           ) : (
             <CenteredNote>Loading…</CenteredNote>
           )}
