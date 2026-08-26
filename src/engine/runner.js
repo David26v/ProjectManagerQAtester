@@ -173,6 +173,21 @@ async function runAttempt({
       }
     });
 
+    // Live-preview frames for the UI's floating run panel — a small JPEG of
+    // the page after each step, sent through onProgress. Only captured when
+    // someone is actually listening; runs from the API/CLI with no
+    // onProgress pay nothing. Transient UI data only — never persisted.
+    const captureFrame = emit
+      ? async () => {
+          try {
+            const buf = await page.screenshot({ type: 'jpeg', quality: 55 });
+            return `data:image/jpeg;base64,${buf.toString('base64')}`;
+          } catch {
+            return null;
+          }
+        }
+      : null;
+
     let failed = false;
 
     if (manualLogin) {
@@ -208,7 +223,7 @@ async function runAttempt({
         await runStep(page, step, targetUrl);
         const durationMs = Date.now() - startedStep;
         steps.push({ name: step.name, status: 'passed', durationMs });
-        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'passed' });
+        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'passed', preview: await captureFrame() });
       } catch (e) {
         const durationMs = Date.now() - startedStep;
         const screenshotName = `${slug(step.name)}-${Date.now()}.png`;
@@ -221,7 +236,7 @@ async function runAttempt({
         }
 
         steps.push({ name: step.name, status: 'failed', error: e.message, screenshot: screenshotName, durationMs });
-        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'failed', error: e.message });
+        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'failed', error: e.message, preview: await captureFrame() });
 
         failed = true;
         status = 'failed';

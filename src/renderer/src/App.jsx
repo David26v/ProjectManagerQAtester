@@ -123,7 +123,17 @@ const useRunManager = (reload) => {
         // to an unrelated overlapping run of the same suite.
         if (event.attempt !== undefined && run.attempt !== undefined && event.attempt !== run.attempt) return run;
         if (event.type === 'step-start') return { ...run, currentStepName: event.name };
-        if (event.type === 'step-end') return { ...run, completedSteps: run.completedSteps + 1, currentStepName: event.name };
+        if (event.type === 'step-end') {
+          return {
+            ...run,
+            completedSteps: run.completedSteps + 1,
+            currentStepName: event.name,
+            // Latest live-preview frame from the runner (jpeg data URI) —
+            // kept if a step-end arrives without one so the panel never
+            // flashes back to empty mid-run.
+            previewFrame: event.preview || run.previewFrame,
+          };
+        }
         return run;
       });
     });
