@@ -38,9 +38,9 @@ visible to you. You sign in once; the session persists on your machine.
 2. **Dashboard** — check overnight/scheduled runs: anything red?
 3. For a red run: open it → watch the failure video → check Console Logs
    and Network Failures tabs → decide: real bug or flaky selector?
-   - **Real bug** → **Build Report** → select evidence → **Create Jira
-     Ticket** (lands on the Kanban board) and/or export the zip bundle for
-     the developer.
+   - **Real bug** → **Build Report** → select evidence → **Create Kanban
+     Ticket** (lands on the built-in Kanban board) and/or export the zip
+     bundle for the developer.
    - **Flaky/broken step** → open the suite → fix or re-record the step →
      re-run to confirm green.
 4. **New feature to cover?** Record a new suite (Recorder), save it with a
@@ -101,7 +101,7 @@ ticket — the tool records them precisely so nothing slips through.
 ## Getting a bug to the developer
 
 The fastest path: **Run → Build Report → select the failure screenshot +
-video → Create Jira Ticket → drag to "Ready for QA" on Kanban**. When the
+video → Create Kanban Ticket → drag to "Ready for QA" on Kanban**. When the
 developer wants files instead: use **Send to David** (zip bundle) — one zip
 with the report and your selected evidence. For a quick share of just the
 video, **Open Folder** on a cloud run copies a one-hour signed video link

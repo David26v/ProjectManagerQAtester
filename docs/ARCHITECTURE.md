@@ -109,8 +109,8 @@ bin/qaflow.js    CLI — a pure HTTP client of the REST API
 - **session.js** — `start({loginUrl})` opens a headed browser and returns a
   controller; `finish()` captures Playwright `storageState`, `cancel()`
   aborts. Encryption happens in the main process, not here.
-- **exporters/** — Excel (exceljs), Jira-style ticket text + kanban ticket
-  builder (shared severity heuristic), zip bundle (archiver).
+- **exporters/** — Excel (exceljs), plain-text ticket generator + kanban
+  ticket builder (shared severity heuristic), zip bundle (archiver).
 - **api.js** — `createApi({store, runSuiteFn, isSignedIn})`, bound to
   `127.0.0.1`. Routes: `GET /projects`, `GET /projects/:id/suites`,
   `POST /projects/:id/suites/:suiteId/run` (awaits the run, returns 201 with

@@ -11,15 +11,17 @@ import { cn } from '@/lib/utils';
 const FORMATS = [
   { key: 'json', label: 'JSON', icon: Braces },
   { key: 'excel', label: 'Excel', icon: FileText },
-  { key: 'ticket', label: 'Jira Ticket', icon: Send },
+  { key: 'ticket', label: 'Kanban Ticket', icon: Send },
   { key: 'zip', label: 'Zip Bundle', icon: Zap },
 ];
 
+// Jira push deliberately absent — bug tracking lives on the built-in Kanban
+// board (user decision 2026-08-26); an external tracker integration would be
+// a new feature, not a destination toggle.
 const DESTINATIONS = [
   { key: 'download', label: 'Download', icon: Download },
   { key: 'copy-json', label: 'Copy JSON', icon: Braces },
   { key: 'send-to-david', label: 'Send to David', icon: Send },
-  { key: 'push-to-jira', label: 'Push to Jira', icon: Zap, disabled: true, note: 'Configure in v2' },
 ];
 
 // Generate Report modal (modal-6 mockup). Self-contained — performs the
@@ -116,9 +118,9 @@ export function GenerateReportModal({
       if (formats.ticket) {
         try {
           const ticket = await window.qaflow.reports.createTicket(run.runId);
-          produced.push(`Jira Ticket "${ticket.title}"`);
+          produced.push(`Kanban ticket "${ticket.title}"`);
         } catch (e) {
-          errors.push(`Jira Ticket: ${e.message}`);
+          errors.push(`Kanban ticket: ${e.message}`);
         }
       }
 

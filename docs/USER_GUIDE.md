@@ -116,12 +116,13 @@ From a run, click **Build Report**:
    **Evidence Preview** with zoom and notes. Selections save automatically.
 2. **Fill the summary** — title, description, severity, environment, and
    editable reproduction steps. The **Live Preview** shows the JSON and the
-   Jira-style ticket text as you go.
+   ticket text as you go.
 3. **Generate** — pick any combination of formats:
    - **JSON** — the raw run report.
    - **Excel** — a formatted spreadsheet.
-   - **Jira Ticket** — creates a ticket on the Kanban board (copyable
-     Jira-style text).
+   - **Kanban Ticket** — creates a ticket on the built-in Kanban board
+     (with copyable plain-text ticket format). Bug tracking lives entirely
+     on the board — there is no external Jira integration.
    - **Zip Bundle / "Send to David"** — one zip with the report + all
      selected evidence, ready to send to a developer.
 
