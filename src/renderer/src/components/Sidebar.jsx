@@ -8,6 +8,7 @@ import {
   FileBarChart2,
   KeyRound,
   GitBranch,
+  BookOpen,
   Settings,
   ChevronUp,
 } from 'lucide-react';
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
   { label: 'Reports', href: '#/reports', icon: FileBarChart2, match: 'reports' },
   { label: 'Credentials', href: '#/credentials', icon: KeyRound, match: 'credentials' },
   { label: 'Repository', href: '#/repo', icon: GitBranch, match: 'repo' },
+  { label: 'Guide', href: '#/guide', icon: BookOpen, match: 'guide' },
   { label: 'Settings', href: '#/settings', icon: Settings, match: 'settings' },
 ];
 
