@@ -63,20 +63,6 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
   );
   const lastRun = suiteRuns[0];
 
-  if (!suite) return null;
-
-  const { Icon, colorClass } = projectVisual(project || { id: suite.projectId });
-
-  function handleRun() {
-    onRun(suite, {
-      environment,
-      headless,
-      credentialProfileId: credentialProfileId || undefined,
-      retries: retryCount,
-    });
-    onClose();
-  }
-
   const scheduleAtIso = useMemo(() => {
     if (!scheduleDate || !scheduleTime) return null;
     const [year, month, day] = scheduleDate.split('-').map(Number);
@@ -84,6 +70,24 @@ export function RunSuiteModal({ open, onClose, suite, project, runs = [], onRun 
     if ([year, month, day, hh, mm].some((n) => Number.isNaN(n))) return null;
     return new Date(year, month - 1, day, hh, mm).toISOString();
   }, [scheduleDate, scheduleTime]);
+
+  // The closed-state bail-out must come AFTER every hook above — an early
+  // return between hooks changes the hook count when `suite` arrives, which
+  // is React error #310 and used to crash this whole screen on the very
+  // first "Run" click.
+  if (!suite) return null;
+
+  const { Icon, colorClass } = projectVisual(project || { id: suite.projectId });
+
+  const handleRun = () => {
+    onRun(suite, {
+      environment,
+      headless,
+      credentialProfileId: credentialProfileId || undefined,
+      retries: retryCount,
+    });
+    onClose();
+  };
 
   const scheduleInPast = Boolean(scheduleAtIso && new Date(scheduleAtIso).getTime() <= Date.now());
   const canSchedule = Boolean(environment && scheduleAtIso && !scheduleInPast);
