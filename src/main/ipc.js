@@ -21,7 +21,7 @@ const sessionEngine = require('../engine/session.js');
 const { exportRunsToExcel } = require('../engine/exporters/excel.js');
 const { generateTicketText, ticketFromRun } = require('../engine/exporters/ticket.js');
 const { createBundle } = require('../engine/exporters/bundle.js');
-const { signedMediaUrl } = require('../engine/cloud/media.js');
+const { BUCKET, signedMediaUrl } = require('../engine/cloud/media.js');
 
 // Mirrors `resolveEnvironment` in engine/api.js (kept local — that function
 // isn't exported, and it's a small enough helper that duplicating it here
@@ -134,7 +134,17 @@ function registerIpc({
   // answer rather than an ipcMain "no handler registered" error on a dev
   // checkout / smoke run with no cloud env at all. `login`/`logout` throw a
   // clear message in that case instead of silently no-op'ing.
-  handle('auth:status', () => (auth ? auth.status() : { loggedIn: false, email: null, name: null }));
+  // `configured: false` tells the renderer there is no cloud auth at all
+  // (dev checkout / smoke without .env) so it must NOT gate the UI behind a
+  // Login screen nobody could ever get past — data IPC is ungated in that
+  // case too (see `handle()` above). `await auth.ready` makes the boot-time
+  // answer final: without it, a status() call racing session restore would
+  // read as "logged out" for a user whose auto-login is about to succeed.
+  handle('auth:status', async () => {
+    if (!auth) return { loggedIn: false, email: null, name: null, configured: false };
+    await auth.ready;
+    return { ...auth.status(), configured: true };
+  });
   handle('auth:login', async ({ email, password } = {}) => {
     if (!auth) throw new Error('Cloud auth is not configured');
     return auth.login(email, password);
@@ -146,6 +156,55 @@ function registerIpc({
   });
   if (auth) {
     auth.onChange((status) => (notifyAuthStatus || ((s) => send('auth:changed', s)))(status));
+  }
+
+  // ---- cloud-media export support ----
+  // Cloud runs (Task 3) hold their media in Supabase Storage as
+  // `storage:<runId>/<file>` paths, but the exporters (excel/bundle) read
+  // files off disk relative to a run dir. `materializeRunMedia` bridges the
+  // two: for a cloud run it downloads every referenced object into a fresh
+  // temp dir and returns a rewritten copy of the run whose media paths are
+  // the bare filenames inside it — the exporters then work unchanged. Local
+  // (legacy) runs pass straight through to the real run dir. Callers must
+  // invoke `cleanup()` in a `finally`.
+  function isStoragePath(p) {
+    return typeof p === 'string' && p.startsWith('storage:');
+  }
+
+  function hasStorageMedia(run) {
+    return (run.capturedMedia || []).some((m) => isStoragePath(m.path));
+  }
+
+  async function materializeRunMedia(run) {
+    if (!hasStorageMedia(run)) {
+      return { run, dir: store.runDir(run.runId), cleanup: () => {} };
+    }
+    if (!supabase) throw new Error('This run\'s media lives in cloud storage, which is not configured');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qaflow-export-'));
+    const copy = JSON.parse(JSON.stringify(run));
+    const bare = (p) => (isStoragePath(p) ? p.slice('storage:'.length).split('/').pop() : p);
+
+    for (const media of copy.capturedMedia || []) {
+      if (!isStoragePath(media.path)) continue;
+      const key = media.path.slice('storage:'.length);
+      const { data, error } = await supabase.storage.from(BUCKET).download(key);
+      if (error) throw new Error(`Failed to download run media "${key}": ${error.message}`);
+      fs.writeFileSync(path.join(dir, bare(media.path)), Buffer.from(await data.arrayBuffer()));
+      media.path = bare(media.path);
+    }
+
+    if (isStoragePath(copy.videoPath)) copy.videoPath = bare(copy.videoPath);
+    for (const step of copy.steps || []) {
+      if (isStoragePath(step.screenshot)) step.screenshot = bare(step.screenshot);
+    }
+
+    // The bundle exporter prefers a real report.json from the run dir — give
+    // it the CANONICAL report (original storage paths), not the rewritten
+    // local-path copy, so the bundled report matches what the cloud holds.
+    fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(run, null, 2));
+
+    return { run: copy, dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
   }
 
   // Count of runs currently executing via `executeRun` — incremented for
@@ -280,9 +339,30 @@ function registerIpc({
 
   handle('runs:run', async (suiteId, opts = {}) => executeRun(suiteId, opts, 'manual'));
 
-  handle('runs:openDir', (runId) => {
-    shell.openPath(store.runDir(runId));
-    return true;
+  // Local runs open their folder as before. A cloud run has no local dir
+  // (saveRun uploaded its media and reclaimed the disk) — return
+  // `{ cloud: true, mediaLink }` instead so the renderer can copy a signed
+  // playback URL rather than opening a folder that doesn't exist.
+  handle('runs:openDir', async (runId) => {
+    const dir = store.runDir(runId);
+    if (fs.existsSync(dir)) {
+      shell.openPath(dir);
+      return { opened: true };
+    }
+
+    const run = await store.getRun(runId);
+    if (run && hasStorageMedia(run)) {
+      let mediaLink = null;
+      if (supabase) {
+        const media =
+          (run.capturedMedia || []).find((m) => m.type === 'video' && isStoragePath(m.path)) ||
+          (run.capturedMedia || []).find((m) => isStoragePath(m.path));
+        if (media) mediaLink = await signedMediaUrl(supabase, media.path.slice('storage:'.length));
+      }
+      return { cloud: true, mediaLink };
+    }
+
+    return { opened: false };
   });
 
   // ---- recorder ----
@@ -465,7 +545,12 @@ function registerIpc({
     });
     if (canceled || !filePath) return null;
 
-    await exportRunsToExcel([run], () => store.runDir(runId), filePath);
+    const { run: localRun, dir, cleanup } = await materializeRunMedia(run);
+    try {
+      await exportRunsToExcel([localRun], () => dir, filePath);
+    } finally {
+      cleanup();
+    }
     return filePath;
   });
 
@@ -499,7 +584,12 @@ function registerIpc({
 
     const outputDir = path.dirname(filePath);
     const fileName = path.basename(filePath);
-    return createBundle(run, store.runDir(runId), outputDir, { fileName });
+    const { run: localRun, dir, cleanup } = await materializeRunMedia(run);
+    try {
+      return await createBundle(localRun, dir, outputDir, { fileName });
+    } finally {
+      cleanup();
+    }
   });
 
   handle('reports:ticketText', async (runId) => {

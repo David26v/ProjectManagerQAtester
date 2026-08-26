@@ -1,25 +1,33 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { EmptyScreen } from '@/components/EmptyScreen';
 import { NewProjectModal } from '@/components/NewProjectModal';
 import { RunProgressBanner } from '@/components/RunProgressBanner';
+import { RunCompletionModal } from '@/components/RunCompletionModal';
 import { UpdateReadyBanner } from '@/components/UpdateReadyBanner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { Dashboard } from '@/screens/Dashboard';
-import { Projects } from '@/screens/Projects';
-import { ProjectDetail } from '@/screens/ProjectDetail';
-import { Suites } from '@/screens/Suites';
-import { SuiteDetail } from '@/screens/SuiteDetail';
-import { Runs } from '@/screens/Runs';
-import { RunDetail } from '@/screens/RunDetail';
-import { ReportBuilder } from '@/screens/ReportBuilder';
-import { Reports } from '@/screens/Reports';
-import { Credentials } from '@/screens/Credentials';
-import { Kanban } from '@/screens/Kanban';
-import { TicketDetail } from '@/screens/TicketDetail';
-import { Settings } from '@/screens/Settings';
+import { Login } from '@/screens/Login';
 import { ToastProvider, useToast } from '@/lib/toast';
 import { useHashRoute, navigate } from '@/hooks/useHashRoute';
+
+// Screens are lazy-loaded (code-split by Vite) rather than bundled into the
+// first paint: the shell + sidebar render immediately and each screen's
+// chunk loads on first visit. That keeps startup fast and memory lower —
+// screens the user never opens are never parsed or mounted.
+const lazyScreen = (loader, name) => lazy(() => loader().then((m) => ({ default: m[name] })));
+const Dashboard = lazyScreen(() => import('@/screens/Dashboard'), 'Dashboard');
+const Projects = lazyScreen(() => import('@/screens/Projects'), 'Projects');
+const ProjectDetail = lazyScreen(() => import('@/screens/ProjectDetail'), 'ProjectDetail');
+const Suites = lazyScreen(() => import('@/screens/Suites'), 'Suites');
+const SuiteDetail = lazyScreen(() => import('@/screens/SuiteDetail'), 'SuiteDetail');
+const Runs = lazyScreen(() => import('@/screens/Runs'), 'Runs');
+const RunDetail = lazyScreen(() => import('@/screens/RunDetail'), 'RunDetail');
+const ReportBuilder = lazyScreen(() => import('@/screens/ReportBuilder'), 'ReportBuilder');
+const Reports = lazyScreen(() => import('@/screens/Reports'), 'Reports');
+const Credentials = lazyScreen(() => import('@/screens/Credentials'), 'Credentials');
+const Kanban = lazyScreen(() => import('@/screens/Kanban'), 'Kanban');
+const TicketDetail = lazyScreen(() => import('@/screens/TicketDetail'), 'TicketDetail');
+const Settings = lazyScreen(() => import('@/screens/Settings'), 'Settings');
 
 function useAppData() {
   const [state, setState] = useState({
@@ -51,15 +59,44 @@ function useAppData() {
   return { ...state, reload };
 }
 
+// Cloud auth state. `status` is null while the very first `auth:status`
+// answer (which waits on the main process's session auto-restore) is in
+// flight — the gate renders a splash for that instant. `configured: false`
+// means there is no cloud auth wired at all (dev checkout / smoke without
+// .env): the app runs ungated on local data, exactly as before Task 4.
+function useAuth() {
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    // Subscribe BEFORE the initial fetch so a login/logout that lands
+    // between the two never gets dropped. `auth:changed` only ever fires
+    // when auth is wired, so `configured: true` is implied on that path.
+    const unsubscribe = window.qaflow.on('auth:changed', (payload) => {
+      if (mounted) setStatus({ ...payload, configured: true });
+    });
+    window.qaflow.auth.status().then((s) => {
+      if (mounted) setStatus((prev) => prev ?? s);
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  return { status, refresh: (s) => setStatus({ ...s, configured: true }) };
+}
+
 // Owns the single in-flight run kicked off from a Run Suite modal. Lives
 // above the modal (which closes/unmounts immediately on "Run Suite") so the
 // `qaflow.runs.run()` promise and the `run:progress` stream both survive the
 // navigate("#/runs") that follows — a fixed banner (rather than in-screen
-// state) is what carries the live progress and the pass/fail toast, since
-// it needs to survive navigating away from the Runs screen entirely.
+// state) is what carries the live progress, and a completion modal (rather
+// than an auto-navigate) is what lands the verdict.
 function useRunManager(reload) {
   const toast = useToast();
   const [activeRun, setActiveRun] = useState(null);
+  const [completedRun, setCompletedRun] = useState(null);
 
   useEffect(() => {
     const unsubscribe = window.qaflow.on('run:progress', (event) => {
@@ -107,9 +144,7 @@ function useRunManager(reload) {
       window.qaflow.runs
         .run(suite.id, opts)
         .then((report) => {
-          const failed = report.status === 'failed';
-          toast(`"${suite.name}" ${failed ? 'failed' : 'passed'}.`, failed ? 'error' : 'success');
-          navigate(`/runs/${report.runId}`);
+          setCompletedRun(report);
           reload();
         })
         .catch((e) => {
@@ -122,7 +157,13 @@ function useRunManager(reload) {
     [toast, reload]
   );
 
-  return { activeRun, startRun, dismissActiveRun: () => setActiveRun(null) };
+  return {
+    activeRun,
+    startRun,
+    dismissActiveRun: () => setActiveRun(null),
+    completedRun,
+    dismissCompletedRun: () => setCompletedRun(null),
+  };
 }
 
 // Surfaces the scheduler's fire events at the app level — not just the
@@ -218,11 +259,15 @@ function activeNavKey(route) {
   return top;
 }
 
-function AppShell() {
+function CenteredNote({ children }) {
+  return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{children}</div>;
+}
+
+function AppShell({ authStatus }) {
   const route = useHashRoute();
   const data = useAppData();
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const { activeRun, startRun, dismissActiveRun } = useRunManager(data.reload);
+  const { activeRun, startRun, dismissActiveRun, completedRun, dismissCompletedRun } = useRunManager(data.reload);
   useScheduleFiredListener(data.reload);
   useBrowserBootstrapListener();
   const { readyVersion, dismiss: dismissUpdateReady } = useUpdateReadyListener();
@@ -247,15 +292,17 @@ function AppShell() {
       <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
         <Sidebar
           activeSegment={activeNavKey(route)}
-          userName={data.settings?.userName}
-          userEmail={data.settings?.userEmail}
+          userName={authStatus?.name || data.settings?.userName}
+          userEmail={authStatus?.email || data.settings?.userEmail}
           version={data.version}
         />
         <main className="flex-1 overflow-y-auto">
           {data.loaded ? (
-            <Screen route={route} data={data} onNewProject={() => setNewProjectOpen(true)} startRun={startRun} />
+            <Suspense fallback={<CenteredNote>Loading…</CenteredNote>}>
+              <Screen route={route} data={data} onNewProject={() => setNewProjectOpen(true)} startRun={startRun} />
+            </Suspense>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</div>
+            <CenteredNote>Loading…</CenteredNote>
           )}
         </main>
       </div>
@@ -267,6 +314,7 @@ function AppShell() {
       />
 
       <RunProgressBanner run={activeRun} onDismiss={dismissActiveRun} />
+      <RunCompletionModal report={completedRun} onClose={dismissCompletedRun} />
       <UpdateReadyBanner
         version={readyVersion}
         onInstall={handleRestartClick}
@@ -286,10 +334,26 @@ function AppShell() {
   );
 }
 
+// The auth gate wraps the entire shell: while cloud auth is configured and
+// no session is active, ONLY the Login screen exists — no data hooks mount,
+// so no gated IPC call ever fires while signed out ("Not signed in" errors
+// stay impossible by construction, not by scattered guards).
+function AuthGate() {
+  const { status, refresh } = useAuth();
+
+  if (!status) {
+    return <div className="flex h-screen w-screen items-center justify-center bg-background text-sm text-muted-foreground">Starting…</div>;
+  }
+  if (status.configured && !status.loggedIn) {
+    return <Login onLoggedIn={refresh} />;
+  }
+  return <AppShell authStatus={status.configured ? status : null} />;
+}
+
 export default function App() {
   return (
     <ToastProvider>
-      <AppShell />
+      <AuthGate />
     </ToastProvider>
   );
 }

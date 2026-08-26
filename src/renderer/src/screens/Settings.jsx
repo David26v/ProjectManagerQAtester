@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { User, Server, FolderOpen, Info, Copy, Bug, FileJson } from 'lucide-react';
+import { User, Server, FolderOpen, Info, Copy, Bug, FileJson, LogOut, Cloud } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { StatusPill } from '@/components/StatusPill';
 import { fmtDate } from '@/lib/format';
+import { openRunFolder } from '@/lib/media';
 import { useToast } from '@/lib/toast';
 
 const ROLES = ['QA', 'Developer'];
@@ -27,6 +28,25 @@ export function Settings({ data }) {
   const [savingApi, setSavingApi] = useState(false);
   const [updateStatus, setUpdateStatus] = useState(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [account, setAccount] = useState(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  // Account card state — self-contained rather than threaded through `data`,
+  // since auth status lives outside the store. Sign-out flips the whole app
+  // back to the Login screen via App.jsx's `auth:changed` subscription.
+  useEffect(() => {
+    window.qaflow.auth.status().then(setAccount);
+  }, []);
+
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      await window.qaflow.auth.logout();
+    } catch (e) {
+      toast(`Sign out failed: ${e.message}`, 'error');
+      setSigningOut(false);
+    }
+  }
 
   useEffect(() => {
     setProfile({ userName: settings?.userName || '', role: settings?.role || 'QA' });
@@ -87,7 +107,7 @@ export function Settings({ data }) {
     setSavingApi(true);
     try {
       await window.qaflow.settings.save({ apiPort: port });
-      toast('API port saved — restart QA Flow for it to take effect.', 'success');
+      toast('API port saved — restart the app for it to take effect.', 'success');
       reload();
     } catch (e) {
       toast(`Failed to save API port: ${e.message}`, 'error');
@@ -115,6 +135,24 @@ export function Settings({ data }) {
         <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">Manage your profile, local API, and app preferences.</p>
       </div>
+
+      {account?.configured && (
+        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+            <Cloud className="h-4 w-4 text-muted-foreground" /> Account
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-foreground">{account.name || account.email}</div>
+              <div className="truncate text-xs text-muted-foreground">{account.email}</div>
+              <p className="mt-1 text-xs text-muted-foreground">Signed in to the shared Astreus cloud workspace.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={signOut} disabled={signingOut}>
+              <LogOut className="h-4 w-4" /> {signingOut ? 'Signing out…' : 'Sign out'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
@@ -153,8 +191,8 @@ export function Settings({ data }) {
               <StatusPill status="connected" />
             </div>
             <p className="-mt-2 text-xs text-muted-foreground">
-              QA Flow starts the local REST API automatically on launch — there's no separate start/stop control, so this reflects the port configuration rather than a
-              live health check.
+              The local REST API starts automatically once you're signed in — there's no separate start/stop control, so this reflects the port configuration rather
+              than a live health check.
             </p>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="settings-port">Port</Label>
@@ -200,7 +238,7 @@ export function Settings({ data }) {
           </div>
           <div className="mt-4 flex flex-col gap-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">QA Flow</span>
+              <span className="text-muted-foreground">Astreus Tech Tester Tool</span>
               <span className="font-medium text-foreground">v{version || '—'}</span>
             </div>
             <div className="flex justify-between">
@@ -266,7 +304,7 @@ export function Settings({ data }) {
                       <td className="px-3 py-2.5 text-muted-foreground">{fmtDate(r.startedAt)}</td>
                       <td className="px-3 py-2.5 text-right">
                         <button
-                          onClick={() => window.qaflow.runs.openDir(r.runId)}
+                          onClick={() => openRunFolder(r.runId, toast)}
                           className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                         >
                           <FileJson className="h-3.5 w-3.5" /> Open

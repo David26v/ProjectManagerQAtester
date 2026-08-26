@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { StatusPill } from '@/components/StatusPill';
 import { fmtDate, fmtDuration } from '@/lib/format';
-import { shortRunId, resolveMediaUrls } from '@/lib/media';
+import { shortRunId, resolveMediaUrls, openRunFolder } from '@/lib/media';
 import { deriveSeverity, findFailingStep, parseErrorDetails, SEVERITY_REASONS } from '@/lib/severity';
 import { navigate } from '@/hooks/useHashRoute';
 import { useToast } from '@/lib/toast';
@@ -109,11 +109,7 @@ export function RunDetail({ id, data, startRun }) {
   }
 
   async function openDir() {
-    try {
-      await window.qaflow.runs.openDir(run.runId);
-    } catch (e) {
-      toast(`Failed to open run folder: ${e.message}`, 'error');
-    }
+    await openRunFolder(run.runId, toast);
   }
 
   function copyRunId() {

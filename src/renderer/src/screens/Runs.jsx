@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { StatusPill } from '@/components/StatusPill';
 import { fmtDate, fmtDuration } from '@/lib/format';
-import { shortRunId } from '@/lib/media';
+import { shortRunId, openRunFolder } from '@/lib/media';
 import { navigate } from '@/hooks/useHashRoute';
 import { useToast } from '@/lib/toast';
 
@@ -53,11 +53,7 @@ export function Runs({ data, startRun }) {
   }
 
   async function openDir(run) {
-    try {
-      await window.qaflow.runs.openDir(run.runId);
-    } catch (e) {
-      toast(`Failed to open run folder: ${e.message}`, 'error');
-    }
+    await openRunFolder(run.runId, toast);
   }
 
   return (

@@ -39,10 +39,10 @@ export function Sidebar({ activeSegment, userName, userEmail, version }) {
   return (
     <aside className="flex w-[230px] shrink-0 flex-col border-r border-border bg-card">
       <div className="flex items-center gap-2 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-          Q
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+          A
         </div>
-        <span className="text-base font-semibold text-foreground">QA Flow</span>
+        <span className="text-sm font-semibold leading-tight text-foreground">Astreus Tech Tester Tool</span>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-1">

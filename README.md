@@ -1,10 +1,16 @@
-# QA Flow
+# Astreus Tech Tester Tool
 
-QA Flow is a desktop app for recording, running, and reporting on browser QA
-suites. It wraps Playwright to record UI flows as JSON steps, replay them on
-demand, capture screenshots/video/console/network evidence, and turn failures
-into kanban-tracked bug tickets — all backed by a simple local JSON + file
-store (no external database).
+*(formerly QA Flow)*
+
+Astreus Tech Tester Tool is a desktop app for recording, running, and
+reporting on browser QA suites. It wraps Playwright to record UI flows as
+JSON steps, replay them on demand, capture screenshots/video/console/network
+evidence, and turn failures into kanban-tracked bug tickets — backed by a
+shared Supabase cloud workspace (Postgres via Prisma + Supabase Storage for
+run media) with invite-only sign-in, so the whole team sees the same
+projects, suites, runs, and tickets. Credential secrets and settings stay
+device-local and encrypted; a local JSON store remains for engine tests and
+offline fallback.
 
 Built with Electron, Playwright, and a plain JavaScript engine layer that is
 independently unit-testable with Node's built-in test runner.
