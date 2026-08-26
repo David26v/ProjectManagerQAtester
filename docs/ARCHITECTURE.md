@@ -1,22 +1,28 @@
-# QA Flow — Architecture
+# Astreus Tech Tester Tool — Architecture
 
-Plain-JavaScript Electron app with a strict three-layer split. The rule that
-holds everything together: **`src/engine/` never imports Electron** — it is
-pure Node, receives paths/config as parameters, and is unit-tested with
-`node --test` alone.
+Plain-JavaScript Electron app with a strict three-layer split, cloud-primary
+storage on Supabase since v2. The rule that holds everything together:
+**`src/engine/` never imports Electron** — it is pure Node, receives
+paths/config/clients as parameters, and is unit-tested with `node --test`
+alone.
 
 ```
 ┌────────────────────────────────────────────────────────────┐
 │ src/renderer/   React 19 + Tailwind v4 + shadcn/ui (Vite)  │
 │                 talks ONLY to window.qaflow                │
+│                 Login gate wraps the whole shell           │
 ├────────────────────────────────────────────────────────────┤
 │ src/main/       Electron shell (CommonJS)                  │
 │   main.js       window, qaflow-media:// protocol, API boot │
+│   auth.js       Supabase Auth + safeStorage session        │
 │   preload.js    contextBridge → window.qaflow              │
 │   ipc.js        thin adapters: IPC channel ↔ engine call   │
+│   scheduler.js  due-schedule polling → executeRun          │
 ├────────────────────────────────────────────────────────────┤
 │ src/engine/     pure Node (CommonJS) — no Electron         │
-│   store.js      JSON+file storage (createStore(baseDir))   │
+│   cloud-store.js  Prisma+Storage store (same interface)    │
+│   cloud/        db.js · supabase.js · media.js             │
+│   store.js      JSON+file store (tests + device-local)     │
 │   runner.js     Playwright suite runner + evidence capture │
 │   recorder.js   browser recorder → JSON steps              │
 │   session.js    headed login capture → storageState        │
@@ -24,21 +30,80 @@ pure Node, receives paths/config as parameters, and is unit-tested with
 │   api.js        Express REST API (127.0.0.1 only)          │
 └────────────────────────────────────────────────────────────┘
 bin/qaflow.js    CLI — a pure HTTP client of the REST API
+
+        Supabase (shared project, isolated `astreus` schema)
+        ├─ Postgres via Prisma — projects/suites/runs/tickets/
+        │  credential metadata/schedules (shared workspace data)
+        ├─ Storage bucket `astreus-run-media` — run videos and
+        │  screenshots, served to the app via signed URLs
+        └─ Supabase Auth — invite-only sign-in (shared users)
 ```
+
+## Cloud layer (v2)
+
+- **Source of truth** — the cloud store (`src/engine/cloud-store.js`)
+  implements the exact same `createStore()` surface as the v1 JSON store,
+  over Prisma → Postgres. Every consumer (ipc.js, api.js, scheduler)
+  talks to "the store" and doesn't know which one it got.
+- **Schema isolation (binding)** — the Supabase project hosts a live ERP in
+  `public`; Astreus owns exactly the `astreus` Postgres schema and the
+  `astreus-run-media` bucket, nothing else. `DATABASE_URL` must carry
+  `schema=astreus` (`cloud/db.js` throws otherwise); deployment is
+  `prisma db push` via `npm run db:push` (which rewrites to the direct
+  5432 URL — the pooler hangs pushes). Tests permanently assert no
+  astreus tables have leaked into `public`.
+- **Run media** — the runner still writes video/screenshots to a local
+  scratch run dir; `cloud-store.saveRun` then uploads each file to
+  `astreus-run-media/<runId>/<file>`, rewrites report paths to
+  `storage:<runId>/<file>`, re-persists, and removes the local dir only
+  when every file uploaded cleanly (partial failure keeps the dir as a
+  local fallback). Playback goes through `app:mediaUrl`, which returns a
+  signed URL (1h TTL) for `storage:` paths and the legacy
+  `qaflow-media://` protocol for local ones.
+- **Exports from cloud media** — Excel/zip exports "materialize" a cloud
+  run first: download every referenced object into a temp dir, rewrite a
+  copy of the report to bare filenames, run the unchanged exporters
+  against it, and clean the temp dir in `finally`. "Open Folder" on a
+  cloud run returns `{ cloud: true, mediaLink }` and the renderer copies
+  a signed video link instead.
+- **What stays device-local** — credential storageState/password blobs
+  (safeStorage-encrypted `.bin` files; the cloud `CredentialProfile` table
+  holds metadata only), `settings.json`, and the in-flight run scratch
+  dir. The v1 JSON store keeps serving engine tests, and is the automatic
+  fallback store when cloud construction fails at boot (offline dev,
+  missing `.env`) — the app degrades to local data with a console warning
+  instead of white-screening.
+
+## Auth
+
+- **auth.js (main)** — Supabase Auth with the *publishable* key only (the
+  service-role key is confined to the engine's admin client). The session
+  JSON (incl. refresh token) is persisted through a custom storage adapter
+  as a safeStorage-encrypted `auth-session.bin`, restored on boot
+  (auto-login) and refreshed automatically.
+- **Gating** — every data IPC channel except `auth:*`, `updates:*`, and
+  `app:version` rejects with `Not signed in` when no user is active. The
+  REST API only boots after the first confirmed sign-in and 503s every
+  route while signed out. `auth:status` awaits session restore before
+  answering and reports `configured: false` when no cloud env exists at
+  all — in that case the renderer skips the Login gate and the app runs
+  ungated on local data.
+- **Identity** — tickets and comments default their reporter/author to the
+  signed-in user (metadata name preferred, else email).
 
 ## Engine (`src/engine/`)
 
-- **store.js** — `createStore(baseDir)`; everything is JSON files under one
-  base dir (`userData/qaflow-data` in the app, a temp dir in tests):
-  `projects.json`, `suites/<id>.json`, `runs/<runId>/report.json` + media,
-  `credentials/index.json` + `credentials/<id>.bin`, `tickets.json`,
-  `settings.json`. Credential metadata and encrypted blobs are stored
-  separately; the store never returns blobs from listing calls.
-- **runner.js** — drives the `playwright` library directly (not
-  `@playwright/test`). Executes the fixed step vocabulary
+- **store.js** — `createStore(baseDir)`; JSON files under one base dir.
+  Still the contract-defining implementation: `cloud-store.js` mirrors its
+  method signatures and return shapes exactly (dates as ISO strings, runs
+  newest-first, `BUG-<n>` ticket ids via an atomic counter).
+- **runner.js** — drives the `playwright` library directly. Executes the
+  fixed step vocabulary
   (`goto|click|fill|press|select|waitFor|assertVisible|assertText`), records
-  video, screenshots the failing step, collects console errors and network
-  failures, and persists the run report.
+  video, screenshots the failing step, and captures **all** of: console
+  errors, uncaught in-page exceptions (`pageerror`), tab crashes, failed
+  requests, and every HTTP ≥400 response. Supports retries and an optional
+  manual-login pre-step (password redacted from any error text).
 - **recorder.js** — opens a browser with an injected script
   (`recorder-inject.js`) that emits steps live as the user interacts.
 - **session.js** — `start({loginUrl})` opens a headed browser and returns a
@@ -46,20 +111,21 @@ bin/qaflow.js    CLI — a pure HTTP client of the REST API
   aborts. Encryption happens in the main process, not here.
 - **exporters/** — Excel (exceljs), Jira-style ticket text + kanban ticket
   builder (shared severity heuristic), zip bundle (archiver).
-- **api.js** — `createApi({store, runSuiteFn})`, bound to `127.0.0.1`.
-  Routes: `GET /projects`, `GET /projects/:id/suites`,
+- **api.js** — `createApi({store, runSuiteFn, isSignedIn})`, bound to
+  `127.0.0.1`. Routes: `GET /projects`, `GET /projects/:id/suites`,
   `POST /projects/:id/suites/:suiteId/run` (awaits the run, returns 201 with
   the finished report), `GET /runs?projectId=&suiteId=`,
   `GET /runs/:runId/report`, `POST /webhooks/deploy-complete`,
   `GET /projects/:id/auth/status` (credential metadata only). Errors are
-  always `{ error: "<message>" }` with a proper status code.
+  always `{ error: "<message>" }` with a proper status code; 503 when
+  signed out.
 
 ## Run report shape (fixed contract)
 
 ```js
 { runId, suiteId, projectId, suiteName, targetUrl, environment,
   startedAt, finishedAt, status: "passed"|"failed",
-  triggeredBy: "manual"|"api"|"cli",
+  triggeredBy: "manual"|"api"|"cli"|"schedule",
   steps: [{ name, status, error?, screenshot?, durationMs }],
   consoleErrors: [{ text }], networkFailures: [{ url, failure }],
   videoPath,
@@ -67,70 +133,77 @@ bin/qaflow.js    CLI — a pure HTTP client of the REST API
   reportSelection: { selectedMediaIds: [], notes: {} } | null }
 ```
 
-The renderer, exporters, API, and CLI all consume exactly this shape.
+The renderer, exporters, API, and CLI all consume exactly this shape. For
+cloud runs, `videoPath` / `steps[].screenshot` / `capturedMedia[].path` are
+`storage:<runId>/<file>` sentinels instead of bare filenames.
 
 ## Electron main (`src/main/`)
 
-- **main.js** — creates the 1500×980 window (`contextIsolation: true`,
-  `nodeIntegration: false`), wires the engine with
-  `baseDir = userData/qaflow-data`, boots the REST API on
-  `settings.apiPort` (default 4317; bind failure warns, never crashes), and
-  registers the **`qaflow-media://<runId>/<file>`** protocol so `<img>`/
-  `<video>` can play run evidence. The protocol validates `runId` against
-  `/^[A-Za-z0-9_-]+$/` and confines resolved paths to the run directory
-  (path-traversal hardened). `--smoke` mode loads the window, prints
-  `SMOKE OK`, and exits 0 — used as the build's verification floor.
+- **main.js** — loads `.env`, builds localStore → Prisma → Supabase admin →
+  cloud store (each guarded; failures degrade to local), creates the
+  1500×980 window (`contextIsolation: true`, `nodeIntegration: false`),
+  boots the REST API after first sign-in on `settings.apiPort` (default
+  4317), ensures the Storage bucket, starts the scheduler, and registers
+  the **`qaflow-media://<runId>/<file>`** protocol (runId validated against
+  `/^[A-Za-z0-9_-]+$/`, path-traversal hardened). `--smoke` mode loads the
+  window with no env/network at all, prints `SMOKE OK`, exits 0.
 - **preload.js** — exposes `window.qaflow` via contextBridge. Dot-path
   groups mirror IPC channel names (`projects:list` ⇔ `qaflow.projects.list`):
-  `projects.* suites.* runs.* recorder.* session.* reports.* tickets.*
-  settings.* app.*`, plus push events `qaflow.on('recorder:step'|'run:progress', cb)`
-  (returns an unsubscribe function). Only an allowlisted event set can be
-  subscribed.
+  `auth.* projects.* suites.* runs.* recorder.* session.* reports.*
+  tickets.* settings.* schedules.* app.* updates.*`, plus allowlisted push
+  events via `qaflow.on(...)` (`recorder:step`, `run:progress`,
+  `schedules:fired`, `browser:status`, `updates:status`, `auth:changed`).
 - **ipc.js** — one thin `ipcMain.handle` per channel: parse args → call
-  engine → return JSON. Credential flow: captured `storageState` is
-  encrypted with `safeStorage` (plaintext fallback is flagged
-  `encrypted:false`); when a run/recording uses a profile, the blob is
-  decrypted to a temp file passed to Playwright and deleted in `finally`.
-  Secrets never cross the bridge — the renderer only ever sees credential
-  metadata.
+  engine → return JSON, with the signed-in guard applied centrally.
+  Credential flow: captured `storageState` is encrypted with `safeStorage`
+  (plaintext fallback is flagged `encrypted:false`); when a run/recording
+  uses a profile, the blob is decrypted to a temp file passed to
+  Playwright and deleted in `finally`. Secrets never cross the bridge.
 
 ## Renderer (`src/renderer/`)
 
 Vite app (`vite.config.mjs`, output `src/renderer/dist/`, loaded from disk —
 no dev server). React 19, Tailwind v4 (`@theme` tokens in `src/index.css`),
-hand-vendored shadcn/ui primitives in `src/components/ui/` (new-york style,
-JSX, `cn()` from `src/lib/utils.js`), lucide-react icons.
+hand-vendored shadcn/ui primitives in `src/components/ui/`, lucide-react
+icons.
 
+- **Auth gate** — `App.jsx` renders the Login screen *instead of* the shell
+  until a session is active (when cloud auth is configured); no data hook
+  mounts while signed out, so gated IPC calls can't fire. `auth:changed`
+  flips the gate live in both directions.
 - **Routing** — tiny hash router (`src/hooks/useHashRoute.js`) →
   `{ segments, query }`. Routes: `#/dashboard`, `#/projects[/:id]`,
-  `#/suites[/:id]` (`?panel=recorder` scrolls to the recorder), `#/runs[/:id[/report]]`,
-  `#/kanban[/:ticketId]`, `#/credentials`, `#/settings`.
-- **Screens** in `src/screens/`, one file each; shared pieces in
-  `src/components/` (Sidebar, StatusPill, RunProgressBanner, modals) and
-  `src/lib/` (format, steps, severity, media, stats, toast).
-- **Run lifecycle** — `useRunManager` in `App.jsx` owns starting runs and the
-  global progress banner (survives modal unmount), fed by `run:progress`.
+  `#/suites[/:id]` (`?panel=recorder` scrolls to the recorder),
+  `#/runs[/:id[/report]]`, `#/kanban[/:ticketId]`, `#/reports`,
+  `#/credentials`, `#/settings`.
+- **Screens** are lazy-loaded (`React.lazy` + Vite code-splitting) — the
+  shell paints immediately and each screen's chunk loads on first visit,
+  keeping startup fast and memory proportional to what's actually used.
+- **Run lifecycle** — `useRunManager` in `App.jsx` owns starting runs, the
+  global progress banner (fed by `run:progress`), and the completion modal
+  that lands the verdict with View Details / Build Report actions.
 - All data access goes through `window.qaflow`; media only through
-  `app.mediaUrl()` (`qaflow-media://`), never `file://`.
+  `app.mediaUrl()` (signed URL or `qaflow-media://`), never `file://`.
 
 ## CLI (`bin/qaflow.js`)
 
 Zero-dependency `process.argv` parser over `fetch` against
 `http://127.0.0.1:<port>`. Commands: `run` (exit 1 on failed suite),
 `status`, `report`. It never touches the store or Playwright directly — the
-API is the only door, keeping the adapter boundary clean.
+API is the only door. The app must be running and signed in.
 
 ## Testing
 
-`npm test` → `node --test test/*.test.js` (store, runner, recorder,
-exporters, api — 40 tests). Tests create their own temp base dir and a local
-fixture web server; they never touch real app data. The renderer has no unit
-tests in v1; `npm run smoke` (build + `electron . --smoke`) is the boot-level
-check.
+`npm test` → `node --test test/**/*.test.js` (store, runner, recorder,
+exporters, api, schedule, cloud-db, cloud-store, cloud-media — 64 tests).
+Local tests use temp dirs and a fixture web server; cloud integration tests
+run live against the real `astreus` schema/bucket with `astreus-test-`
+prefixed rows (cleaned in `finally`) and skip entirely when `DATABASE_URL`
+is unset, so the suite stays green offline. `npm run smoke` (build +
+`electron . --smoke`) is the boot-level check and must pass with no env.
 
-## Deliberately out of scope in v1
+## Deliberately out of scope
 
-Supabase/cloud sync, Jira REST push, repo-connection mode, schedule
-*execution* (UI is display-only), PIN lock, role enforcement, installers
-(electron-builder), and server-side persistence of report-builder field edits
-(title/severity/repro steps — the UI discloses this).
+RLS/per-user permissions, offline mode (beyond the local-store fallback),
+self-signup, magic links, storage pruning UI, v1 local-data migration, Jira
+REST push, repo-connection mode, PIN lock, role enforcement.
