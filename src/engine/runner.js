@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require('playwright');
+const { analyzeSecurity } = require('./security.js');
 
 function slug(name) {
   return String(name)
@@ -130,6 +131,12 @@ async function runAttempt({
   const networkFailures = [];
   const steps = [];
   const capturedMedia = [];
+  // Passive security-audit collectors — populated by response/request
+  // listeners below purely from traffic the functional run already
+  // generates (no extra requests). Fed to analyzeSecurity() at the end.
+  const documentResponses = [];
+  const subresourceRequests = [];
+  let securityAudit = { findings: [], summary: { total: 0, high: 0, medium: 0, low: 0 } };
   let status = 'passed';
 
   // Tags every progress event with which attempt (1-based) emitted it, so a
@@ -170,6 +177,18 @@ async function runAttempt({
     page.on('response', (res) => {
       if (res.status() >= 400) {
         consoleErrors.push({ text: `${res.status()} ${res.statusText()} - ${res.url()}` });
+      }
+      // Capture main-frame document responses for the security audit — one
+      // per navigation, headers only (no bodies), capped so a long run
+      // doesn't accumulate unbounded.
+      const req = res.request();
+      if (req.isNavigationRequest() && req.frame() === page.mainFrame() && documentResponses.length < 50) {
+        documentResponses.push({ url: res.url(), status: res.status(), headers: res.headers() });
+      }
+    });
+    page.on('request', (req) => {
+      if (subresourceRequests.length < 400) {
+        subresourceRequests.push({ url: req.url(), resourceType: req.resourceType() });
       }
     });
 
@@ -243,6 +262,30 @@ async function runAttempt({
       }
     }
   } finally {
+    // Passive security audit — gather cookies and any password-form info
+    // from the live context BEFORE closing it, then analyze everything the
+    // run already observed. Best-effort: an audit failure must never fail
+    // the functional run.
+    if (context) {
+      try {
+        const cookies = await context.cookies();
+        let forms = [];
+        const livePage = context.pages()[0];
+        if (livePage) {
+          forms = await livePage.evaluate(() =>
+            Array.from(document.forms).map((f) => ({
+              pageUrl: location.href,
+              action: f.action || '',
+              hasPassword: Boolean(f.querySelector('input[type="password"]')),
+            }))
+          );
+        }
+        securityAudit = analyzeSecurity({ documentResponses, requests: subresourceRequests, cookies, forms });
+      } catch {
+        // audit is advisory only
+      }
+    }
+
     let videoSourcePath = null;
     if (context) {
       const page = context.pages()[0];
@@ -287,6 +330,7 @@ async function runAttempt({
     steps,
     consoleErrors,
     networkFailures,
+    security: securityAudit,
     videoPath: videoMedia ? videoMedia.path : null,
     capturedMedia,
     reportSelection: null,

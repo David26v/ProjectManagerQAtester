@@ -267,13 +267,7 @@ const Screen = ({ route, data, onNewProject, startRun }) => {
   return <EmptyScreen title="Not found" subtitle={`No screen registered for "#/${route.path}".`} />;
 }
 
-// `#/suites` is shared by the Test Suites and Recorder nav items — Recorder
-// highlights only when `?panel=recorder` is present, Test Suites otherwise.
-const activeNavKey = (route) => {
-  const top = route.segments[0] || 'dashboard';
-  if (top === 'suites' && route.query.panel === 'recorder') return 'recorder';
-  return top;
-}
+const activeNavKey = (route) => route.segments[0] || 'dashboard';
 
 const CenteredNote = ({ children }) => {
   return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{children}</div>;

@@ -85,6 +85,9 @@ export const RunCompletionModal = ({ report, onClose }) => {
           {seconds != null && <span>Duration: {seconds}s</span>}
           <span>Console errors: {consoleCount}</span>
           <span>Network failures: {networkCount}</span>
+          {report.security?.summary?.total > 0 && (
+            <span className="text-warning">Security findings: {report.security.summary.total}</span>
+          )}
           {report.attempts > 1 && <span>Attempts: {report.attempts}</span>}
         </div>
       </div>

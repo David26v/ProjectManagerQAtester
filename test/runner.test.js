@@ -203,6 +203,33 @@ test('runSuite: console errors and >=400 responses are captured as consoleErrors
   assert.ok(report.consoleErrors.some((e) => /^404 .* - .*does-not-exist\.html$/.test(e.text)));
 });
 
+test('runSuite: attaches a passive security audit to the report', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const store = createStore(tmpBaseDir());
+  const project = { id: 'proj-1', name: 'Fixture', baseUrl: fixture.url };
+  const environment = { name: 'Local', baseUrl: fixture.url };
+  const suite = {
+    id: 'suite-sec',
+    projectId: project.id,
+    name: 'Security audit flow',
+    steps: [{ type: 'goto', name: 'Go to login', value: '/', timeout: 10000 }],
+  };
+
+  const report = await runSuite({ store, suite, project, environment, headless: true });
+
+  assert.ok(report.security, 'report has a security section');
+  assert.ok(Array.isArray(report.security.findings));
+  assert.ok(report.security.summary && typeof report.security.summary.total === 'number');
+  // The bare node:http fixture sends no security headers, so the audit must
+  // find the missing-CSP class of issue.
+  assert.ok(report.security.findings.some((f) => f.id === 'csp-missing'), 'expected a missing-CSP finding for the header-less fixture');
+
+  const persisted = store.getRun(report.runId);
+  assert.ok(persisted.security.summary.total >= 1);
+});
+
 test('runSuite: uncaught in-page exceptions are captured as consoleErrors', async (t) => {
   const fixture = await startFixtureServer();
   t.after(() => fixture.close());

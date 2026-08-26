@@ -2,7 +2,6 @@ import {
   Home,
   Folder,
   ListChecks,
-  Circle,
   Play,
   LayoutGrid,
   FileBarChart2,
@@ -17,14 +16,12 @@ import { cn } from '@/lib/utils';
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '#/dashboard', icon: Home, match: 'dashboard' },
   { label: 'Projects', href: '#/projects', icon: Folder, match: 'projects' },
+  // Test Suites and the recorder live on one screen — the list on top, the
+  // recorder panel below. There's deliberately no separate "Recorder" nav
+  // item: two entries pointing at the same screen read as a bug. The screen
+  // still honors `?panel=recorder` (from "New Suite" and project cards) to
+  // scroll straight to the recorder.
   { label: 'Test Suites', href: '#/suites', icon: ListChecks, match: 'suites' },
-  // `?panel=recorder` (not a `#` fragment inside the hash, which the router
-  // can't parse) — Task 8's Suites screen reads `route.query.panel` to
-  // scroll to the recorder panel. Sharing the `suites` route segment with
-  // Test Suites means only one of the two nav items highlights at a time;
-  // App.jsx picks Recorder's highlight only when that query param is set,
-  // Test Suites otherwise.
-  { label: 'Recorder', href: '#/suites?panel=recorder', icon: Circle, match: 'recorder' },
   { label: 'Runs', href: '#/runs', icon: Play, match: 'runs' },
   { label: 'Kanban Board', href: '#/kanban', icon: LayoutGrid, match: 'kanban' },
   { label: 'Reports', href: '#/reports', icon: FileBarChart2, match: 'reports' },
