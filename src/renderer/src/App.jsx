@@ -30,7 +30,7 @@ const TicketDetail = lazyScreen(() => import('@/screens/TicketDetail'), 'TicketD
 const Settings = lazyScreen(() => import('@/screens/Settings'), 'Settings');
 const Repo = lazyScreen(() => import('@/screens/Repo'), 'Repo');
 
-function useAppData() {
+const useAppData = () => {
   const [state, setState] = useState({
     projects: [],
     suites: [],
@@ -65,7 +65,7 @@ function useAppData() {
 // flight — the gate renders a splash for that instant. `configured: false`
 // means there is no cloud auth wired at all (dev checkout / smoke without
 // .env): the app runs ungated on local data, exactly as before Task 4.
-function useAuth() {
+const useAuth = () => {
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
@@ -94,7 +94,7 @@ function useAuth() {
 // navigate("#/runs") that follows — a fixed banner (rather than in-screen
 // state) is what carries the live progress, and a completion modal (rather
 // than an auto-navigate) is what lands the verdict.
-function useRunManager(reload) {
+const useRunManager = (reload) => {
   const toast = useToast();
   const [activeRun, setActiveRun] = useState(null);
   const [completedRun, setCompletedRun] = useState(null);
@@ -172,7 +172,7 @@ function useRunManager(reload) {
 // no matter which screen the user is on when a scheduled run completes.
 // Dashboard keeps a lighter local subscription (no toast) just to refresh
 // its own schedules list/statuses.
-function useScheduleFiredListener(reload) {
+const useScheduleFiredListener = (reload) => {
   const toast = useToast();
 
   useEffect(() => {
@@ -188,7 +188,7 @@ function useScheduleFiredListener(reload) {
 // `done` are expected first-run noise (a background download), so only the
 // `error` status — main.js already prefixes it with the user-facing message
 // — reaches a toast; the happy path stays silent.
-function useBrowserBootstrapListener() {
+const useBrowserBootstrapListener = () => {
   const toast = useToast();
 
   useEffect(() => {
@@ -204,7 +204,7 @@ function useBrowserBootstrapListener() {
 // are silent here and instead read live from Settings' About card, which
 // polls `updates.status()` on demand. `dev` (unpackaged checkout) never
 // fires this listener at all since main.js's dev stub never pushes.
-function useUpdateReadyListener() {
+const useUpdateReadyListener = () => {
   const [readyVersion, setReadyVersion] = useState(null);
 
   useEffect(() => {
@@ -217,13 +217,13 @@ function useUpdateReadyListener() {
   return { readyVersion, dismiss: () => setReadyVersion(null) };
 }
 
-function Screen({ route, data, onNewProject, startRun }) {
+const Screen = ({ route, data, onNewProject, startRun }) => {
   const [top, second] = route.segments;
 
   if (!top || top === 'dashboard') return <Dashboard data={data} onNewProject={onNewProject} />;
 
   if (top === 'projects') {
-    if (second) return <ProjectDetail id={second} data={data} />;
+    if (second) return <ProjectDetail id={second} data={data} startRun={startRun} />;
     return <Projects data={data} onNewProject={onNewProject} startRun={startRun} />;
   }
 
@@ -256,17 +256,17 @@ function Screen({ route, data, onNewProject, startRun }) {
 
 // `#/suites` is shared by the Test Suites and Recorder nav items — Recorder
 // highlights only when `?panel=recorder` is present, Test Suites otherwise.
-function activeNavKey(route) {
+const activeNavKey = (route) => {
   const top = route.segments[0] || 'dashboard';
   if (top === 'suites' && route.query.panel === 'recorder') return 'recorder';
   return top;
 }
 
-function CenteredNote({ children }) {
+const CenteredNote = ({ children }) => {
   return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{children}</div>;
 }
 
-function AppShell({ authStatus }) {
+const AppShell = ({ authStatus }) => {
   const route = useHashRoute();
   const data = useAppData();
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -283,7 +283,7 @@ function AppShell({ authStatus }) {
   // truth for "busy" (it also sees scheduled runs and recordings the
   // renderer's own `activeRun` state can't see) — call install() first and
   // only show the confirm dialog if main reports back blocked.
-  async function handleRestartClick() {
+  const handleRestartClick = async () => {
     const result = await window.qaflow.updates.install();
     if (result && result.blocked) {
       setConfirmRestartOpen(true);
@@ -341,7 +341,7 @@ function AppShell({ authStatus }) {
 // no session is active, ONLY the Login screen exists — no data hooks mount,
 // so no gated IPC call ever fires while signed out ("Not signed in" errors
 // stay impossible by construction, not by scattered guards).
-function AuthGate() {
+const AuthGate = () => {
   const { status, refresh } = useAuth();
 
   if (!status) {
@@ -353,10 +353,12 @@ function AuthGate() {
   return <AppShell authStatus={status.configured ? status : null} />;
 }
 
-export default function App() {
+const App = () => {
   return (
     <ToastProvider>
       <AuthGate />
     </ToastProvider>
   );
 }
+
+export default App;
