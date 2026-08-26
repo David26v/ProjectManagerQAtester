@@ -1,6 +1,6 @@
 {
   "name": "qa-flow",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Astreus Tech Tester Tool — record, run, and report browser QA suites",
   "author": "Astreus Tech",
   "private": true,
