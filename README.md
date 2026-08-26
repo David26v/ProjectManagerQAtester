@@ -65,6 +65,7 @@ import/export, and a dedicated Reports screen:
 - **Scheduler** — queue a suite to run once, daily, or weekly from the Run Suite dialog; fires while the app is open (no OS-level background task) and surfaces on the Dashboard's Scheduled Runs card with pause/delete and lapsed-schedule handling.
 - **Suite import/export** — export a suite to JSON and import it back into a project without re-recording.
 - **Exporters** — Excel report export, plain-text ticket generator for the built-in Kanban board, "Send to David" zip bundle.
+- **Repository** — embedded Sourcetree-style git client (isomorphic-git): per-project clone, commit-graph history with diffs, staging/commit, branch switching, pull/push/fetch with an encrypted on-device GitHub token.
 - **Local REST API + CLI** — `express` server bound to `127.0.0.1`, `bin/qaflow.js` (`run` / `status` / `report` commands).
 - **Electron shell** — contextBridge `window.qaflow` bridge, `qaflow-media://` protocol for evidence playback, `--smoke` boot check.
 - **Renderer (React + Tailwind v4 + hand-vendored shadcn primitives)**:

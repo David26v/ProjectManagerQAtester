@@ -187,7 +187,27 @@ authenticated.
   evidence from the linked run, console/network diagnostics, comments, and a
   QA checklist.
 
-## 9. CLI & local API (automation)
+## 9. Repository (built-in git client)
+
+**Repository** (sidebar) is an embedded git client — Sourcetree-style — so
+you can work with the project's GitHub repo without leaving the app:
+
+1. Pick the project, paste the repo's **HTTPS URL**, and (for private repos
+   or pushing) a **GitHub personal access token** — the token is stored
+   encrypted on this device only. Click **Clone Repository**.
+2. **Working Copy** shows staged and unstaged files with one-click
+   Stage / Unstage / Discard, a per-file diff view, and a commit box.
+   Commits are authored as your signed-in account.
+3. **History** shows the commit graph (branches and merges drawn as lanes),
+   and clicking a commit lists its changed files with full diffs.
+4. The left rail lists branches — click to switch; clicking a
+   **remote-only** branch checks it out locally. Create branches inline.
+5. Toolbar: **Pull**, **Push**, **Fetch** against `origin`.
+
+Each device keeps its own working copy (under the app's data folder); the
+clone is per-machine even though the rest of the workspace is shared.
+
+## 10. CLI & local API (automation)
 
 While the app is open, a REST API listens on `127.0.0.1:4317` (port
 configurable in **Settings**). The bundled CLI wraps it:
@@ -203,7 +223,7 @@ post-deploy hook. There is also a deploy webhook:
 `POST /webhooks/deploy-complete {"projectId": "...", "tag": "smoke"}` runs
 every non-archived suite tagged `smoke` for that project.
 
-## 10. Settings
+## 11. Settings
 
 - **Profile** — your name and role (Developer role reveals an extra
   Diagnostics card with raw report access).
@@ -211,7 +231,7 @@ every non-archived suite tagged `smoke` for that project.
 - **Data** — where everything lives on disk (see below).
 - **About** — app/Electron versions, and Updates (see below).
 
-## 11. Updates
+## 12. Updates
 
 An installed copy of Astreus Tech Tester Tool checks for a new version automatically on
 launch and every few hours, downloads it in the background, and shows a

@@ -22,6 +22,7 @@ const { exportRunsToExcel } = require('../engine/exporters/excel.js');
 const { generateTicketText, ticketFromRun } = require('../engine/exporters/ticket.js');
 const { createBundle } = require('../engine/exporters/bundle.js');
 const { BUCKET, signedMediaUrl } = require('../engine/cloud/media.js');
+const gitEngine = require('../engine/git.js');
 
 // Mirrors `resolveEnvironment` in engine/api.js (kept local — that function
 // isn't exported, and it's a small enough helper that duplicating it here
@@ -91,6 +92,11 @@ function registerIpc({
   getBrowserStatus = () => null,
   supabase = null,
   auth = null,
+  // Device-local data root (`userData/qaflow-data`) — the repo handlers use
+  // it for per-project working copies (`repos/<projectId>`) and the
+  // encrypted GitHub token. Optional so tests that register IPC without it
+  // keep working; repo channels then reject with a clear message.
+  baseDir = null,
   // Defaults to the plain (unbuffered) `send()` defined just below so any
   // caller that doesn't pass this (none currently — main.js always does)
   // still gets a working, if racy, `auth:changed` push. main.js passes its
@@ -635,6 +641,141 @@ function registerIpc({
   handle('app:revealPath', (p) => {
     shell.showItemInFolder(p);
     return true;
+  });
+
+  // ---- repository (embedded git client) ----
+  // Sourcetree-style git client backed by engine/git.js (isomorphic-git).
+  // One working copy per project per device under `<baseDir>/repos/<id>`;
+  // the repo URL is remembered device-locally in settings (`settings.repos`)
+  // and the GitHub token is safeStorage-encrypted at
+  // `<baseDir>/github-token.bin` — the token never crosses the bridge back
+  // to the renderer (repo:auth:get only reports that one exists).
+
+  const tokenFile = baseDir ? path.join(baseDir, 'github-token.bin') : null;
+  const tokenFlagFile = tokenFile ? tokenFile + '.plaintext' : null;
+
+  function requireRepoDir(projectId) {
+    if (!baseDir) throw new Error('Repository features are unavailable in this context');
+    if (!projectId) throw new Error('projectId is required');
+    return gitEngine.repoDirFor(baseDir, projectId);
+  }
+
+  function readGithubToken() {
+    if (!tokenFile || !fs.existsSync(tokenFile)) return null;
+    try {
+      const raw = fs.readFileSync(tokenFile);
+      return fs.existsSync(tokenFlagFile) ? raw.toString('utf8') : safeStorage.decryptString(raw);
+    } catch (e) {
+      console.warn(`[qaflow] failed to read stored GitHub token: ${e.message}`);
+      return null;
+    }
+  }
+
+  // Commit/merge author identity — the signed-in account when available,
+  // falling back to the device profile name.
+  async function gitAuthor() {
+    const user = auth && auth.getUser();
+    if (user) {
+      return {
+        name: (user.user_metadata && user.user_metadata.name) || user.email,
+        email: user.email,
+      };
+    }
+    const settings = await store.getSettings();
+    return { name: (settings && settings.userName) || 'QA', email: 'qa@astreus.local' };
+  }
+
+  async function repoUrlFor(projectId) {
+    const settings = await store.getSettings();
+    return (settings && settings.repos && settings.repos[projectId] && settings.repos[projectId].url) || null;
+  }
+
+  handle('repo:auth:get', () => ({ hasToken: Boolean(readGithubToken()) }));
+
+  handle('repo:auth:save', async ({ token } = {}) => {
+    if (!tokenFile) throw new Error('Repository features are unavailable in this context');
+    if (!token) {
+      if (fs.existsSync(tokenFile)) fs.unlinkSync(tokenFile);
+      if (fs.existsSync(tokenFlagFile)) fs.unlinkSync(tokenFlagFile);
+      return { hasToken: false };
+    }
+    fs.mkdirSync(baseDir, { recursive: true });
+    if (safeStorage.isEncryptionAvailable()) {
+      fs.writeFileSync(tokenFile, safeStorage.encryptString(token));
+      if (fs.existsSync(tokenFlagFile)) fs.unlinkSync(tokenFlagFile);
+    } else {
+      fs.writeFileSync(tokenFile, token, 'utf8');
+      fs.writeFileSync(tokenFlagFile, '1');
+    }
+    return { hasToken: true };
+  });
+
+  handle('repo:info', async (projectId) => {
+    const dir = requireRepoDir(projectId);
+    const url = await repoUrlFor(projectId);
+    const cloned = gitEngine.isCloned(dir);
+    if (!cloned) return { cloned, url, hasToken: Boolean(readGithubToken()) };
+    const branches = await gitEngine.branches(dir);
+    return { cloned, url, hasToken: Boolean(readGithubToken()), branches };
+  });
+
+  handle('repo:clone', async ({ projectId, url } = {}) => {
+    const dir = requireRepoDir(projectId);
+    if (!url || !/^https:\/\//i.test(url)) throw new Error('Enter the repository\'s HTTPS URL');
+    if (gitEngine.isCloned(dir)) throw new Error('This project already has a local copy');
+
+    const settings = await store.getSettings();
+    await store.saveSettings({ repos: { ...(settings.repos || {}), [projectId]: { url } } });
+
+    try {
+      await gitEngine.clone({
+        dir,
+        url,
+        token: readGithubToken(),
+        onProgress: (p) => send('repo:progress', { projectId, ...p }),
+      });
+    } catch (e) {
+      // A failed clone leaves a half-written dir that would block retries
+      // with "already has a local copy" — clean it so the user can fix the
+      // URL/token and try again.
+      fs.rmSync(dir, { recursive: true, force: true });
+      throw e;
+    }
+    return { cloned: true };
+  });
+
+  handle('repo:status', (projectId) => gitEngine.status(requireRepoDir(projectId)));
+  handle('repo:log', (projectId, opts = {}) => gitEngine.log({ dir: requireRepoDir(projectId), depth: opts.depth || 200 }));
+  handle('repo:branches', (projectId) => gitEngine.branches(requireRepoDir(projectId)));
+  handle('repo:checkout', ({ projectId, ref } = {}) => gitEngine.checkout({ dir: requireRepoDir(projectId), ref }));
+  handle('repo:createBranch', ({ projectId, name } = {}) => gitEngine.createBranch({ dir: requireRepoDir(projectId), name }));
+  handle('repo:stage', ({ projectId, filepath } = {}) => gitEngine.stage(requireRepoDir(projectId), filepath));
+  handle('repo:unstage', ({ projectId, filepath } = {}) => gitEngine.unstage(requireRepoDir(projectId), filepath));
+  handle('repo:discard', ({ projectId, filepath } = {}) => gitEngine.discard(requireRepoDir(projectId), filepath));
+
+  handle('repo:commit', async ({ projectId, message } = {}) => {
+    const author = await gitAuthor();
+    return gitEngine.commit({ dir: requireRepoDir(projectId), message, author });
+  });
+
+  handle('repo:pull', async (projectId) => {
+    const author = await gitAuthor();
+    await gitEngine.pull({ dir: requireRepoDir(projectId), token: readGithubToken(), author });
+    return true;
+  });
+  handle('repo:push', async (projectId) => {
+    await gitEngine.push({ dir: requireRepoDir(projectId), token: readGithubToken() });
+    return true;
+  });
+  handle('repo:fetch', async (projectId) => {
+    await gitEngine.fetch({ dir: requireRepoDir(projectId), token: readGithubToken() });
+    return true;
+  });
+
+  handle('repo:commitFiles', ({ projectId, oid } = {}) => gitEngine.commitFiles({ dir: requireRepoDir(projectId), oid }));
+  handle('repo:diff', ({ projectId, filepath, oid = null } = {}) => {
+    const dir = requireRepoDir(projectId);
+    return oid ? gitEngine.commitDiff({ dir, oid, filepath }) : gitEngine.workingDiff({ dir, filepath });
   });
 
   // ---- updates ----

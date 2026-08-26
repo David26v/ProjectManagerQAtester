@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   FileBarChart2,
   KeyRound,
+  GitBranch,
   Settings,
   ChevronUp,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { label: 'Kanban Board', href: '#/kanban', icon: LayoutGrid, match: 'kanban' },
   { label: 'Reports', href: '#/reports', icon: FileBarChart2, match: 'reports' },
   { label: 'Credentials', href: '#/credentials', icon: KeyRound, match: 'credentials' },
+  { label: 'Repository', href: '#/repo', icon: GitBranch, match: 'repo' },
   { label: 'Settings', href: '#/settings', icon: Settings, match: 'settings' },
 ];
 

@@ -251,6 +251,7 @@ app.whenReady().then(async () => {
     supabase: supabaseAdmin,
     auth,
     notifyAuthStatus: sendAuthStatus,
+    baseDir,
   });
 
   // Attach BEFORE awaiting bootApi() — `loadFile` above is unawaited, so if

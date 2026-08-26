@@ -28,6 +28,7 @@ const Credentials = lazyScreen(() => import('@/screens/Credentials'), 'Credentia
 const Kanban = lazyScreen(() => import('@/screens/Kanban'), 'Kanban');
 const TicketDetail = lazyScreen(() => import('@/screens/TicketDetail'), 'TicketDetail');
 const Settings = lazyScreen(() => import('@/screens/Settings'), 'Settings');
+const Repo = lazyScreen(() => import('@/screens/Repo'), 'Repo');
 
 function useAppData() {
   const [state, setState] = useState({
@@ -243,6 +244,8 @@ function Screen({ route, data, onNewProject, startRun }) {
     if (second) return <TicketDetail id={second} data={data} startRun={startRun} />;
     return <Kanban data={data} />;
   }
+
+  if (top === 'repo') return <Repo data={data} />;
 
   if (top === 'settings') return <Settings data={data} />;
 

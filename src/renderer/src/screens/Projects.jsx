@@ -399,14 +399,13 @@ export function Projects({ data, onNewProject, startRun }) {
               >
                 Browser Connection
               </button>
-              <button
-                disabled
-                title="Repo Connection — coming in v2"
-                className="flex cursor-not-allowed items-center gap-1.5 border-b-2 border-transparent pb-2 text-sm font-medium text-muted-foreground/50"
+              <a
+                href="#/repo"
+                title="Open the built-in git client"
+                className="flex items-center gap-1.5 border-b-2 border-transparent pb-2 text-sm font-medium text-muted-foreground hover:text-foreground"
               >
                 <GitBranch className="h-3.5 w-3.5" /> Repo Connection
-                <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold">v2</span>
-              </button>
+              </a>
             </div>
 
             {activeTab === 'browser' && (

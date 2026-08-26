@@ -111,6 +111,15 @@ bin/qaflow.js    CLI — a pure HTTP client of the REST API
   aborts. Encryption happens in the main process, not here.
 - **exporters/** — Excel (exceljs), plain-text ticket generator + kanban
   ticket builder (shared severity heuristic), zip bundle (archiver).
+- **git.js** — embedded git client over isomorphic-git (pure JS, no native
+  modules): clone/fetch/pull/push over HTTPS (GitHub PAT as
+  `x-access-token`), statusMatrix-based staging model, branch
+  list/checkout/create (remote-only branches get a local tracking branch),
+  commit log with parent oids (drives the renderer's lane graph), per-commit
+  changed files via tree walk, and jsdiff line diffs (binary/oversize
+  guarded). Working copies live at `<baseDir>/repos/<projectId>` — one per
+  project per device; the token is safeStorage-encrypted at
+  `<baseDir>/github-token.bin` and never crosses the bridge.
 - **api.js** — `createApi({store, runSuiteFn, isSignedIn})`, bound to
   `127.0.0.1`. Routes: `GET /projects`, `GET /projects/:id/suites`,
   `POST /projects/:id/suites/:suiteId/run` (awaits the run, returns 201 with
@@ -195,7 +204,8 @@ API is the only door. The app must be running and signed in.
 ## Testing
 
 `npm test` → `node --test test/**/*.test.js` (store, runner, recorder,
-exporters, api, schedule, cloud-db, cloud-store, cloud-media — 64 tests).
+exporters, api, schedule, git, cloud-db, cloud-store, cloud-media — 71
+tests).
 Local tests use temp dirs and a fixture web server; cloud integration tests
 run live against the real `astreus` schema/bucket with `astreus-test-`
 prefixed rows (cleaned in `finally`) and skip entirely when `DATABASE_URL`

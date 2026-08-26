@@ -62,6 +62,7 @@ visible to you. You sign in once; the session persists on your machine.
 | **Reports** | Shortcut back to any report you started |
 | **Kanban Board** | Bug tickets in 5 columns, drag to update status |
 | **Credentials** | Saved logins (captured session or manual entry) for authenticated testing |
+| **Repository** | Built-in git client — clone the project's GitHub repo, browse the commit graph, stage/commit, pull and push |
 | **Settings** | Your profile/account, API port, updates |
 
 ## Recording good suites — rules of thumb
