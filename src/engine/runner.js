@@ -152,6 +152,18 @@ async function runAttempt({
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push({ text: msg.text() });
     });
+    // Uncaught in-page exceptions never reach the console listener above —
+    // they surface only through 'pageerror'. Without this, a page that blows
+    // up in an event handler (but still renders) would pass silently.
+    page.on('pageerror', (err) => {
+      consoleErrors.push({ text: `Uncaught exception: ${err.message}` });
+    });
+    // A renderer crash (OOM, GPU fault) kills the tab mid-run; the current
+    // step's action will throw and fail the run, but the report should say
+    // WHY rather than leaving only a cryptic "target closed" step error.
+    page.on('crash', () => {
+      consoleErrors.push({ text: 'Page crashed (browser tab died mid-run)' });
+    });
     page.on('requestfailed', (r) => {
       networkFailures.push({ url: r.url(), failure: r.failure() && r.failure().errorText });
     });

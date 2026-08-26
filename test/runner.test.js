@@ -203,6 +203,31 @@ test('runSuite: console errors and >=400 responses are captured as consoleErrors
   assert.ok(report.consoleErrors.some((e) => /^404 .* - .*does-not-exist\.html$/.test(e.text)));
 });
 
+test('runSuite: uncaught in-page exceptions are captured as consoleErrors', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const store = createStore(tmpBaseDir());
+  const project = { id: 'proj-1', name: 'Fixture', baseUrl: fixture.url };
+  const environment = { name: 'Local', baseUrl: fixture.url };
+  const suite = {
+    id: 'suite-pageerror',
+    projectId: project.id,
+    name: 'Uncaught exception flow',
+    steps: [
+      { type: 'goto', name: 'Go to login', value: '/', timeout: 10000 },
+      { type: 'click', name: 'Trigger uncaught throw', selector: '#throw', timeout: 10000 },
+    ],
+  };
+
+  const report = await runSuite({ store, suite, project, environment, headless: true });
+
+  // The click itself succeeds (the throw happens inside the page's own event
+  // handler), so the run passes — but the exception must still be evidence.
+  assert.equal(report.status, 'passed');
+  assert.ok(report.consoleErrors.some((e) => e.text.includes('Uncaught exception:') && e.text.includes('uncaught fixture explosion')));
+});
+
 test('runSuite: manualLogin with correct creds logs in before step 1 and never leaks the password', async (t) => {
   const fixture = await startFixtureServer();
   t.after(() => fixture.close());
