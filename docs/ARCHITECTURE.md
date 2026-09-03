@@ -1,4 +1,4 @@
-# Astreus Tech Tester Tool — Architecture
+# KriJaxAutomation — Architecture
 
 Plain-JavaScript Electron app with a strict three-layer split, cloud-primary
 storage on Supabase since v2. The rule that holds everything together:
@@ -46,7 +46,7 @@ bin/qaflow.js    CLI — a pure HTTP client of the REST API
   over Prisma → Postgres. Every consumer (ipc.js, api.js, scheduler)
   talks to "the store" and doesn't know which one it got.
 - **Schema isolation (binding)** — the Supabase project hosts a live ERP in
-  `public`; Astreus owns exactly the `astreus` Postgres schema and the
+  `public`; KriJaxAutomation owns exactly the `astreus` Postgres schema and the
   `astreus-run-media` bucket, nothing else. `DATABASE_URL` must carry
   `schema=astreus` (`cloud/db.js` throws otherwise); deployment is
   `prisma db push` via `npm run db:push` (which rewrites to the direct

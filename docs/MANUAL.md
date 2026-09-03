@@ -1,9 +1,9 @@
-# Astreus Tech Tester Tool — Operator's Manual
+# KriJaxAutomation — Operator's Manual
 
 The complete how-to, screen by screen. Companion to `QA_TRAINING.md`
 (mental model / onboarding) and `USER_GUIDE.md` (feature reference).
 A designed, shareable version of this manual is published as the
-"Astreus Operator's Manual" artifact.
+"KriJaxAutomation Operator's Manual" artifact.
 
 ## 1. Concepts: what's a test, and why "suites"?
 

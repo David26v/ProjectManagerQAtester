@@ -9,6 +9,7 @@ import { StatusPill } from '@/components/StatusPill';
 import { fmtDate } from '@/lib/format';
 import { openRunFolder } from '@/lib/media';
 import { useToast } from '@/lib/toast';
+import { PRODUCT } from '@/lib/brand';
 
 const ROLES = ['QA', 'Developer'];
 const DEFAULT_PORT = 4317;
@@ -242,7 +243,7 @@ export function Settings({ data }) {
           </div>
           <div className="mt-4 flex flex-col gap-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Astreus Tech Tester Tool</span>
+              <span className="text-muted-foreground">{PRODUCT}</span>
               <span className="font-medium text-foreground">v{version || '—'}</span>
             </div>
             <div className="flex justify-between">

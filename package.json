@@ -1,8 +1,8 @@
 {
   "name": "qa-flow",
   "version": "2.1.0",
-  "description": "Astreus Tech Tester Tool — record, run, and report browser QA suites",
-  "author": "Astreus Tech",
+  "description": "KriJaxAutomation — record, run, and report browser QA suites",
+  "author": "KriJax Software and Development",
   "private": true,
   "main": "src/main/main.js",
   "scripts": {
@@ -17,7 +17,7 @@
   },
   "build": {
     "appId": "com.astreus.testertool",
-    "productName": "Astreus Tech Tester Tool",
+    "productName": "KriJaxAutomation",
     "directories": {
       "output": "release"
     },

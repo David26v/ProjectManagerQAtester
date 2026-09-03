@@ -1,6 +1,6 @@
-# Astreus Tech Tester Tool — Releasing
+# KriJaxAutomation — Releasing
 
-Astreus Tech Tester Tool ships auto-updates through `electron-updater` reading GitHub Releases
+KriJaxAutomation ships auto-updates through `electron-updater` reading GitHub Releases
 on `David26v/ProjectManagerQAtester` (see the `publish` block in
 `package.json`). Installed copies check for a new release on boot (after a
 short delay) and every 4 hours, download automatically, and prompt the user
@@ -39,7 +39,7 @@ You need a GitHub account with access to this repo. Nothing else.
 9. Once green, go to the **Releases** page (right sidebar of the repo's main
    page, or `github.com/David26v/ProjectManagerQAtester/releases`) and
    confirm the newest release has:
-   - `Astreus Tech Tester Tool Setup <version>.exe` — the installer.
+   - `KriJaxAutomation Setup <version>.exe` — the installer.
    - `latest.yml` — the update manifest `electron-updater` polls for.
    - confirm the release is NOT marked Draft — `electron-updater` cannot see
      draft releases, so a draft release is invisible to installed clients
@@ -99,7 +99,7 @@ debug the build locally before trusting CI with it.
    npm run release
    ```
 5. **Verify the release** on GitHub — the Release should contain:
-   - `Astreus Tech Tester Tool Setup <version>.exe` — the NSIS installer.
+   - `KriJaxAutomation Setup <version>.exe` — the NSIS installer.
    - `latest.yml` — the update manifest `electron-updater` polls for.
    - the matching `.exe.blockmap` (used for differential downloads).
 

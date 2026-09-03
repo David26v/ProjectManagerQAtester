@@ -1,6 +1,6 @@
-# Astreus Tech Tester Tool — User Guide
+# KriJaxAutomation — User Guide
 
-Astreus Tech Tester Tool (formerly QA Flow) lets a QA tester record a browser
+KriJaxAutomation (formerly Astreus Tech Tester Tool / QA Flow) lets a QA tester record a browser
 flow once, replay it as an automated test with full evidence capture, and turn
 failures into shareable bug reports — without writing any code.
 
@@ -240,7 +240,7 @@ every non-archived suite tagged `smoke` for that project.
 
 ## 12. Updates
 
-An installed copy of Astreus Tech Tester Tool checks for a new version automatically on
+An installed copy of KriJaxAutomation checks for a new version automatically on
 launch and every few hours, downloads it in the background, and shows a
 "Restart to apply" banner once it's ready — just click **Restart**. You can
 also trigger a manual check from **Settings → About → Check for updates**.

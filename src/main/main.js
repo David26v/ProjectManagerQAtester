@@ -150,7 +150,7 @@ function createWindow() {
     height: 980,
     minWidth: 1200,
     minHeight: 800,
-    title: 'Astreus Tech Tester Tool',
+    title: 'KriJaxAutomation',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

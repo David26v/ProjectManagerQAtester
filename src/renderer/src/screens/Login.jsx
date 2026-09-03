@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/lib/toast';
-import { VENDOR } from '@/lib/brand';
+import { PRODUCT, VENDOR } from '@/lib/brand';
 
 // Sign-in gate for the shared cloud workspace. Invite-only — Supabase Auth
 // errors ("Invalid login credentials") surface as-is; there is deliberately
@@ -41,7 +41,7 @@ export const Login = ({ onLoggedIn }) => {
             A
           </div>
           <div className="text-center">
-            <h1 className="text-lg font-semibold text-foreground">Astreus Tech Tester Tool</h1>
+            <h1 className="text-lg font-semibold text-foreground">{PRODUCT}</h1>
             <p className="mt-1 text-sm text-muted-foreground">Sign in to your team workspace</p>
           </div>
         </div>

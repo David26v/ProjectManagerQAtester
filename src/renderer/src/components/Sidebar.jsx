@@ -39,14 +39,14 @@ function initials(name) {
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || 'QA';
 }
 
-export function Sidebar({ activeSegment, userName, userEmail, workspaceName, version }) {
+export const Sidebar = ({ activeSegment, userName, userEmail, workspaceName, version }) => {
   return (
     <aside className="flex w-[230px] shrink-0 flex-col border-r border-border bg-card">
       <div className="flex items-center gap-2 px-5 py-5">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
           A
         </div>
-        <span className="text-sm font-semibold leading-tight text-foreground">Astreus Tech Tester Tool</span>
+        <span className="text-sm font-semibold leading-tight text-foreground">{PRODUCT}</span>
       </div>
 
       {workspaceName && (
@@ -105,4 +105,4 @@ export function Sidebar({ activeSegment, userName, userEmail, workspaceName, ver
       </div>
     </aside>
   );
-}
+};

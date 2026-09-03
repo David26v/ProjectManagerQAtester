@@ -1,8 +1,8 @@
-# Astreus Tech Tester Tool
+# KriJaxAutomation
 
-*(formerly QA Flow)*
+*(formerly Astreus Tech Tester Tool / QA Flow)*
 
-Astreus Tech Tester Tool is a desktop app for recording, running, and
+KriJaxAutomation is a desktop app for recording, running, and
 reporting on browser QA suites. It wraps Playwright to record UI flows as
 JSON steps, replay them on demand, capture screenshots/video/console/network
 evidence, and turn failures into kanban-tracked bug tickets — backed by a
