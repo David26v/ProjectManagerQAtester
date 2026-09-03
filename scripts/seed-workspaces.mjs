@@ -27,6 +27,17 @@ try {
     });
   }
   console.log(`[seed-workspaces] ${VENDOR.id} ready; ${admins.length} owner(s) ensured.`);
+
+  // `TicketCounter.id` is an autoincrement PK, but its rows are written via
+  // `upsert({ where: { workspaceId } })`, never by letting Postgres assign
+  // the id — so the sequence can drift behind existing rows (e.g. a row
+  // hand-inserted with an explicit id). Resyncing it here on every seed run
+  // keeps every environment self-healing instead of relying on a one-off
+  // manual fix.
+  await prisma.$executeRawUnsafe(
+    'SELECT setval(pg_get_serial_sequence(\'"TicketCounter"\', \'id\'), GREATEST(COALESCE((SELECT MAX(id) FROM "TicketCounter"), 0), 1))'
+  );
+  console.log('[seed-workspaces] TicketCounter sequence synced.');
 } finally {
   await prisma.$disconnect();
 }

@@ -252,10 +252,13 @@ function createCloudStore({ prisma, supabase, localStore, getWorkspaceId }) {
   }
 
   async function saveRun(report) {
+    const workspaceId = ws();
     const runId = report.runId || crypto.randomUUID();
+    const existingAny = await prisma.run.findUnique({ where: { runId } });
+    if (existingAny && existingAny.workspaceId !== workspaceId) throw notFound();
     let saved = { ...report, runId };
     const columnsFor = (r) => ({
-      workspaceId: ws(),
+      workspaceId,
       suiteId: r.suiteId,
       projectId: r.projectId,
       suiteName: r.suiteName,

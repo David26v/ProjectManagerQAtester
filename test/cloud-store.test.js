@@ -382,6 +382,12 @@ test('cloud store: rows are invisible across workspaces and limits are enforced'
     await storeA.saveRun({ runId: `${PREFIX}iso-run-a`, suiteId: sA.id, projectId: pA.id, suiteName: 'S', status: 'passed', startedAt: now.toISOString(), finishedAt: now.toISOString(), steps: [], capturedMedia: [] });
     assert.equal((await storeB.listRuns()).length, 0);
     assert.equal(await storeB.getRun(`${PREFIX}iso-run-a`), undefined);
+    // a saveRun with a foreign runId is refused, never an overwrite
+    await assert.rejects(
+      () => storeB.saveRun({ runId: `${PREFIX}iso-run-a`, suiteId: 'x', projectId: 'x', suiteName: 'hijack', status: 'failed', startedAt: now.toISOString(), steps: [], capturedMedia: [] }),
+      /not found/i
+    );
+    assert.equal((await storeA.getRun(`${PREFIX}iso-run-a`)).suiteName, 'S');
 
     // independent ticket numbering per workspace
     assert.equal(await storeA.nextTicketId(), 'BUG-1');
