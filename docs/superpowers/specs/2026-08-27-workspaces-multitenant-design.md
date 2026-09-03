@@ -200,3 +200,16 @@ No membership / suspended → gate screens, never a blank window. Limit reached 
 ## Out of scope
 
 Workspace switching / multi-membership, self-signup or invite codes, per-workspace branding, Postgres RLS (isolation lives in the single store layer + the admin function; the service key never reaches clients), audit logs, emailed invites/invoices (links and temp passwords are handed over out-of-band), tax/VAT handling, refunds via the portal, customer-facing billing pages.
+
+---
+
+## Backlog — sub-projects 4–7 (requested 2026-09-03, to be brainstormed/specced after 1–3)
+
+| # | Sub-project | Depends on | One-line scope |
+|---|---|---|---|
+| 4 | **Media storage policy** | 1, 2 | Screenshots/videos stay on the customer's device by default; cloud media is a paid plan add-on (`Workspace.cloudMedia` flag set from the portal). First run asks the customer where evidence should live and explains the cost; the cloud store only uploads when the flag is on, otherwise runs keep local media and `Open Folder` works as in v1. |
+| 5 | **Scripting templates (Playwright)** | 1 | A "script" suite type alongside recorded suites: the QA writes/pastes a Playwright script from starter templates (login, CRUD, form validation, API-route check); the runner executes it in the same evidence-capturing harness (video, screenshots, console/network, security audit). |
+| 6 | **PDF reports + Excel manual test scripts** | 1 | Report Builder gains a PDF export (same content as the Excel report, branded KriJaxAutomation); Excel import/export of manual test cases (step / expected / actual / status) so manual testing lives beside automated suites. |
+| 7 | **SaaS polish** | 1–6 | Performance pass (startup, list virtualization for big workspaces), UI refinements across screens, and the auto-update channel already in place is kept as the delivery path. |
+
+Each will get its own brainstorm → spec section → plan, in that order, once sub-project 1 is merged and sub-project 2 (the portal the owner asked to start next) is delivered.
