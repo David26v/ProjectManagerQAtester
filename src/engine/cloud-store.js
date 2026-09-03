@@ -21,6 +21,12 @@ const fs = require('node:fs');
 
 const { uploadRunMedia } = require('./cloud/media.js');
 
+// `Ticket.id` is scoped per-workspace (`@@id([workspaceId, id])`) so Prisma
+// unique lookups need the compound key. No caller threads a workspace yet
+// (that's a later task), so every ticket operation is pinned to the default
+// tenant, matching the `workspaceId @default("ws-krijax")` column default.
+const DEFAULT_WORKSPACE_ID = 'ws-krijax';
+
 function toIso(date) {
   return date instanceof Date ? date.toISOString() : date;
 }
@@ -355,7 +361,9 @@ function createCloudStore({ prisma, supabase, localStore }) {
   }
 
   async function saveTicket(t) {
-    const existing = t.id ? await prisma.ticket.findUnique({ where: { id: t.id } }) : null;
+    const existing = t.id
+      ? await prisma.ticket.findUnique({ where: { workspaceId_id: { workspaceId: DEFAULT_WORKSPACE_ID, id: t.id } } })
+      : null;
     const id = t.id || (await nextTicketId());
     const now = new Date();
     const data = {
@@ -375,7 +383,7 @@ function createCloudStore({ prisma, supabase, localStore }) {
       updatedAt: now,
     };
     const row = await prisma.ticket.upsert({
-      where: { id },
+      where: { workspaceId_id: { workspaceId: DEFAULT_WORKSPACE_ID, id } },
       create: { id, ...data, createdAt: existing?.createdAt || (t.createdAt ? new Date(t.createdAt) : now) },
       update: data,
     });
@@ -383,7 +391,7 @@ function createCloudStore({ prisma, supabase, localStore }) {
   }
 
   async function deleteTicket(id) {
-    await prisma.ticket.deleteMany({ where: { id } });
+    await prisma.ticket.deleteMany({ where: { workspaceId: DEFAULT_WORKSPACE_ID, id } });
   }
 
   // ---- settings ----

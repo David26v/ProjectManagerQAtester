@@ -12,7 +12,8 @@
     "smoke": "npm run build:renderer && electron . --smoke",
     "dist": "prisma generate && npm run build:renderer && electron-builder --win --publish never",
     "release": "prisma generate && npm run build:renderer && electron-builder --win --publish always",
-    "db:push": "node scripts/db-push.mjs"
+    "db:push": "node scripts/db-push.mjs",
+    "db:seed-workspaces": "node scripts/seed-workspaces.mjs"
   },
   "build": {
     "appId": "com.astreus.testertool",
