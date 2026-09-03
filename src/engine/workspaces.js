@@ -174,6 +174,7 @@ const createWorkspaceService = ({ prisma, supabase, platformAdminEmails = [] }) 
     if (role === 'owner' && actorRole !== 'owner') throw new Error('Only an owner can grant the owner role.');
     const target = await prisma.workspaceMember.findFirst({ where: { id: memberId, workspaceId } });
     if (!target) throw new Error('Member not found');
+    if (target.role === 'owner' && actorRole !== 'owner') throw new Error('Only an owner can change or remove another owner.');
     if (target.role === 'owner' && role !== 'owner' && (await ownerCount(workspaceId)) <= 1) {
       throw new Error('A workspace must keep at least one owner.');
     }
@@ -184,6 +185,7 @@ const createWorkspaceService = ({ prisma, supabase, platformAdminEmails = [] }) 
     requireCan(actorRole, 'remove_member');
     const target = await prisma.workspaceMember.findFirst({ where: { id: memberId, workspaceId } });
     if (!target) throw new Error('Member not found');
+    if (target.role === 'owner' && actorRole !== 'owner') throw new Error('Only an owner can change or remove another owner.');
     if (target.role === 'owner' && (await ownerCount(workspaceId)) <= 1) throw new Error('A workspace must keep at least one owner.');
     await prisma.workspaceMember.delete({ where: { id: memberId } });
     return true;

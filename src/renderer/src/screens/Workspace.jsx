@@ -116,7 +116,7 @@ export const Workspace = () => {
                 <tr key={m.id} className="border-b border-border last:border-0">
                   <td className="px-5 py-3 text-foreground">{m.email}{!m.userId && <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">invited</span>}</td>
                   <td className="px-5 py-3">
-                    {canManage ? (
+                    {canManage && !(role !== 'owner' && m.role === 'owner') ? (
                       <Select className="w-32" value={m.role} disabled={busy} onChange={(e) => run(() => window.qaflow.workspace.changeRole({ memberId: m.id, role: e.target.value }), 'Role updated.')}>
                         {ROLES.filter((r) => r !== 'owner' || role === 'owner' || m.role === 'owner').map((r) => <option key={r} value={r}>{r}</option>)}
                       </Select>
@@ -124,7 +124,7 @@ export const Workspace = () => {
                   </td>
                   <td className="px-5 py-3 text-muted-foreground">{m.joinedAt ? timeAgo(m.joinedAt) : '—'}</td>
                   <td className="px-5 py-3 text-right">
-                    {canManage && <button onClick={() => setRemoveTarget(m)} className="rounded-md p-1.5 text-muted-foreground hover:bg-danger-bg hover:text-danger" title="Remove"><Trash2 className="h-4 w-4" /></button>}
+                    {canManage && !(role !== 'owner' && m.role === 'owner') && <button onClick={() => setRemoveTarget(m)} className="rounded-md p-1.5 text-muted-foreground hover:bg-danger-bg hover:text-danger" title="Remove"><Trash2 className="h-4 w-4" /></button>}
                   </td>
                 </tr>
               ))}

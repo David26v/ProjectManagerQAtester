@@ -8,9 +8,14 @@ import { useToast } from '@/lib/toast';
 export const TempPasswordDialog = ({ open, email, password, onClose }) => {
   const toast = useToast();
   if (!open) return null;
-  const copy = () => {
-    navigator.clipboard?.writeText(`Email: ${email}\nTemporary password: ${password}`);
-    toast('Login details copied.', 'success');
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(`Email: ${email}\nTemporary password: ${password}`);
+      toast('Login details copied.', 'success');
+    } catch {
+      toast("Couldn't copy — select the password above and copy it manually.", 'error');
+    }
   };
   return (
     <Dialog open onClose={onClose} className="max-w-md">

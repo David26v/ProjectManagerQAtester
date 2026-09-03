@@ -64,6 +64,8 @@ test('workspaces: provisioning, membership claim, invites, limits, role guards',
     // role changes + last-owner protection
     const promoted = await svc.changeRole(created.workspace.id, invited.member.id, 'admin', 'owner');
     assert.equal(promoted.role, 'admin');
+    await assert.rejects(() => svc.changeRole(created.workspace.id, created.owner.id, 'member', 'admin'), /Only an owner can change or remove another owner/);
+    await assert.rejects(() => svc.removeMember(created.workspace.id, created.owner.id, 'admin'), /Only an owner can change or remove another owner/);
     await assert.rejects(() => svc.changeRole(created.workspace.id, created.owner.id, 'member', 'owner'), /at least one owner/);
     await assert.rejects(() => svc.removeMember(created.workspace.id, created.owner.id, 'owner'), /at least one owner/);
     await svc.removeMember(created.workspace.id, invited.member.id, 'owner');
