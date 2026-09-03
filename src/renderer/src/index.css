@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* shadcn/ui "new-york" style tokens, light theme matching the QA Flow
+/* shadcn/ui "new-york" style tokens, light theme matching the KriJaxAutomation
    mockups (spec: sidebar 230px white, main bg #f6f8fb, primary blue
    #2563eb, radius 10-12px). Task 7 wires these into the real shell. */
 @theme inline {

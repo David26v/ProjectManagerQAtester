@@ -38,7 +38,7 @@ export const Login = ({ onLoggedIn }) => {
       <form onSubmit={submit} className="w-full max-w-sm rounded-xl border border-border bg-card p-8 shadow-sm">
         <div className="flex flex-col items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-xl font-bold text-primary-foreground">
-            A
+            K
           </div>
           <div className="text-center">
             <h1 className="text-lg font-semibold text-foreground">{PRODUCT}</h1>

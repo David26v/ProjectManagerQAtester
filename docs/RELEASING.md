@@ -49,7 +49,7 @@ You need a GitHub account with access to this repo. Nothing else.
    expect the update yet; re-run the workflow with the next version number
    once you've worked out what's wrong.
 10. **Done.** You don't need to distribute the `.exe` yourself. Everyone with
-    QA Flow already installed will pick up the update automatically on their
+    KriJaxAutomation already installed will pick up the update automatically on their
     next app launch (or within 4 hours if the app is left running) — just
     let them know a new version is out if there's something they should
     watch for.

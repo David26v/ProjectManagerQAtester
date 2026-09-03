@@ -202,7 +202,7 @@ export function Settings({ data }) {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="settings-port">Port</Label>
               <Input id="settings-port" type="number" value={apiPort} onChange={(e) => setApiPort(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Changes apply the next time QA Flow starts.</p>
+              <p className="text-xs text-muted-foreground">Changes apply the next time {PRODUCT} starts.</p>
             </div>
             <Button variant="outline" className="self-start" onClick={saveApiPort} disabled={savingApi}>
               {savingApi ? 'Saving…' : 'Save Port'}
