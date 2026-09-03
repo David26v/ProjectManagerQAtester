@@ -7,6 +7,7 @@ import { RunCompletionModal } from '@/components/RunCompletionModal';
 import { UpdateReadyBanner } from '@/components/UpdateReadyBanner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Login } from '@/screens/Login';
+import { WorkspaceGate } from '@/screens/WorkspaceGate';
 import { ToastProvider, useToast } from '@/lib/toast';
 import { useHashRoute, navigate } from '@/hooks/useHashRoute';
 
@@ -348,6 +349,7 @@ const AppShell = ({ authStatus }) => {
           activeSegment={activeNavKey(route)}
           userName={authStatus?.name || data.settings?.userName}
           userEmail={authStatus?.email || data.settings?.userEmail}
+          workspaceName={authStatus?.workspace?.name}
           version={data.version}
         />
         <main className="flex-1 overflow-y-auto">
@@ -402,6 +404,12 @@ const AuthGate = () => {
   }
   if (status.configured && !status.loggedIn) {
     return <Login onLoggedIn={refresh} />;
+  }
+  if (status.configured && !status.workspace) {
+    return <WorkspaceGate status={status} kind="none" />;
+  }
+  if (status.configured && status.workspace.status === 'suspended') {
+    return <WorkspaceGate status={status} kind="suspended" />;
   }
   return <AppShell authStatus={status.configured ? status : null} />;
 }

@@ -12,6 +12,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PRODUCT, VENDOR } from '@/lib/brand';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '#/dashboard', icon: Home, match: 'dashboard' },
@@ -36,7 +37,7 @@ function initials(name) {
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || 'QA';
 }
 
-export function Sidebar({ activeSegment, userName, userEmail, version }) {
+export function Sidebar({ activeSegment, userName, userEmail, workspaceName, version }) {
   return (
     <aside className="flex w-[230px] shrink-0 flex-col border-r border-border bg-card">
       <div className="flex items-center gap-2 px-5 py-5">
@@ -45,6 +46,14 @@ export function Sidebar({ activeSegment, userName, userEmail, version }) {
         </div>
         <span className="text-sm font-semibold leading-tight text-foreground">Astreus Tech Tester Tool</span>
       </div>
+
+      {workspaceName && (
+        <div className="-mt-3 px-5 pb-3">
+          <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-medium text-primary" title="Your workspace">
+            {workspaceName}
+          </span>
+        </div>
+      )}
 
       <nav className="flex-1 overflow-y-auto px-3 py-1">
         <ul className="flex flex-col gap-0.5">
@@ -86,9 +95,10 @@ export function Sidebar({ activeSegment, userName, userEmail, version }) {
         <div className="mt-2 rounded-md bg-secondary/60 px-2.5 py-2 text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            Astreus {version ? `v${version}` : '—'}
+            {PRODUCT} {version ? `v${version}` : '—'}
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5 pl-3">All systems operational</div>
+          <div className="mt-0.5 pl-3">All systems operational</div>
+          <div className="mt-1.5 border-t border-border/60 pt-1.5 text-[10px] leading-tight text-muted-foreground/80">{VENDOR}</div>
         </div>
       </div>
     </aside>

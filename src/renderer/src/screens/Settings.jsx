@@ -145,7 +145,11 @@ export function Settings({ data }) {
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-foreground">{account.name || account.email}</div>
               <div className="truncate text-xs text-muted-foreground">{account.email}</div>
-              <p className="mt-1 text-xs text-muted-foreground">Signed in to the shared Astreus cloud workspace.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Workspace: <span className="font-medium text-foreground">{account.workspace?.name || '—'}</span>
+                {account.role && <> · {account.role}</>}
+                {account.platformAdmin && <> · KriJax staff</>}
+              </p>
             </div>
             <Button variant="outline" size="sm" onClick={signOut} disabled={signingOut}>
               <LogOut className="h-4 w-4" /> {signingOut ? 'Signing out…' : 'Sign out'}
@@ -240,6 +244,10 @@ export function Settings({ data }) {
             <div className="flex justify-between">
               <span className="text-muted-foreground">Astreus Tech Tester Tool</span>
               <span className="font-medium text-foreground">v{version || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Vendor</span>
+              <span className="font-medium text-foreground">KriJax Software and Development</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Projects</span>
