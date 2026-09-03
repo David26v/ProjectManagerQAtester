@@ -17,12 +17,13 @@ function tmpBaseDir() {
 // the `finally` cleanup below can find and delete exactly what it created —
 // this DB is live and shared with other test runs / the real app.
 async function cleanup(prisma) {
-  await prisma.run.deleteMany({ where: { runId: { startsWith: PREFIX } } });
-  await prisma.suite.deleteMany({ where: { id: { startsWith: PREFIX } } });
-  await prisma.project.deleteMany({ where: { id: { startsWith: PREFIX } } });
-  await prisma.ticket.deleteMany({ where: { id: { startsWith: PREFIX } } });
-  await prisma.credentialProfile.deleteMany({ where: { id: { startsWith: PREFIX } } });
-  await prisma.schedule.deleteMany({ where: { id: { startsWith: PREFIX } } });
+  await prisma.run.deleteMany({ where: { OR: [{ runId: { startsWith: PREFIX } }, { workspaceId: { startsWith: PREFIX } }] } });
+  await prisma.suite.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { workspaceId: { startsWith: PREFIX } }] } });
+  await prisma.project.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { workspaceId: { startsWith: PREFIX } }] } });
+  await prisma.ticket.deleteMany({ where: { workspaceId: { startsWith: PREFIX } } });
+  await prisma.ticketCounter.deleteMany({ where: { workspaceId: { startsWith: PREFIX } } });
+  await prisma.credentialProfile.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { workspaceId: { startsWith: PREFIX } }] } });
+  await prisma.schedule.deleteMany({ where: { OR: [{ id: { startsWith: PREFIX } }, { workspaceId: { startsWith: PREFIX } }] } });
 }
 
 test('cloud store round-trips the v1 store interface', async (t) => {
@@ -34,19 +35,9 @@ test('cloud store round-trips the v1 store interface', async (t) => {
 
   const prisma = createPrisma();
   const localStore = createStore(tmpBaseDir());
-  const store = createCloudStore({ prisma, supabase: null, localStore });
-
-  // The `TicketCounter` row is a singleton shared with the real app (it's
-  // not `astreus-test-` prefixed, so the id-prefix cleanup below can't touch
-  // it) — snapshot its value so the concurrency assertions below can be
-  // undone in `finally`, instead of permanently burning 5 numbers out of
-  // production BUG- numbering on every test run.
-  let counterSnapshot = null;
+  const store = createCloudStore({ prisma, supabase: null, localStore, getWorkspaceId: () => `${PREFIX}ws-main` });
 
   try {
-    counterSnapshot = await prisma.ticketCounter.findUnique({ where: { id: 1 } });
-
-
     // ---- projects ----
     assert.deepEqual(await store.listProjects().then((l) => l.filter((p) => p.id.startsWith(PREFIX))), []);
 
@@ -234,13 +225,6 @@ test('cloud store round-trips the v1 store interface', async (t) => {
     assert.equal((await store.listRuns({ projectId: project.id })).length, 0);
   } finally {
     await cleanup(prisma);
-    if (counterSnapshot) {
-      await prisma.ticketCounter.update({ where: { id: 1 }, data: { value: counterSnapshot.value } });
-    } else {
-      // No row existed before this test touched it (fresh DB) — remove the
-      // one `nextTicketId()` created rather than leaving a stray value: 5.
-      await prisma.ticketCounter.deleteMany({ where: { id: 1 } });
-    }
     await prisma.$disconnect();
   }
 });
@@ -295,7 +279,7 @@ test('cloud store: saveRun keeps the local run dir on partial media upload failu
   try {
     // ---- partial failure: one file uploads, one doesn't ----
     const partialRunId = `${PREFIX}run-media-partial`;
-    const partialStore = createCloudStore({ prisma, supabase: stubSupabase(new Set(['bad.png'])), localStore });
+    const partialStore = createCloudStore({ prisma, supabase: stubSupabase(new Set(['bad.png'])), localStore, getWorkspaceId: () => `${PREFIX}ws-main` });
     const partialDir = localStore.runDir(partialRunId);
     fs.mkdirSync(partialDir, { recursive: true });
     fs.writeFileSync(path.join(partialDir, 'ok.png'), 'ok-bytes');
@@ -336,7 +320,7 @@ test('cloud store: saveRun keeps the local run dir on partial media upload failu
 
     // ---- full success: every file uploads, dir is reclaimed ----
     const fullRunId = `${PREFIX}run-media-full`;
-    const fullStore = createCloudStore({ prisma, supabase: stubSupabase(new Set()), localStore });
+    const fullStore = createCloudStore({ prisma, supabase: stubSupabase(new Set()), localStore, getWorkspaceId: () => `${PREFIX}ws-main` });
     const fullDir = localStore.runDir(fullRunId);
     fs.mkdirSync(fullDir, { recursive: true });
     fs.writeFileSync(path.join(fullDir, 'ok.png'), 'ok-bytes');
@@ -352,6 +336,87 @@ test('cloud store: saveRun keeps the local run dir on partial media upload failu
       fs.rmSync(localStore.runDir(`${PREFIX}run-media-partial`), { recursive: true, force: true });
     }
     await cleanup(prisma);
+    await prisma.$disconnect();
+  }
+});
+
+test('cloud store: rows are invisible across workspaces and limits are enforced', async (t) => {
+  if (!process.env.DATABASE_URL) return t.skip('DATABASE_URL not set');
+
+  const { createPrisma } = require('../src/engine/cloud/db.js');
+  const { createStore } = require('../src/engine/store.js');
+  const { createCloudStore } = require('../src/engine/cloud-store.js');
+
+  const prisma = createPrisma();
+  const wsA = `${PREFIX}ws-a`;
+  const wsB = `${PREFIX}ws-b`;
+  const storeA = createCloudStore({ prisma, supabase: null, localStore: createStore(tmpBaseDir()), getWorkspaceId: () => wsA });
+  const storeB = createCloudStore({ prisma, supabase: null, localStore: createStore(tmpBaseDir()), getWorkspaceId: () => wsB });
+  const now = new Date();
+
+  try {
+    // B is a real workspace row with a 1-project cap; A has no row (unlimited).
+    await prisma.workspace.create({
+      data: { id: wsB, name: 'B', slug: wsB, plan: 'free', maxProjects: 1, createdAt: now, updatedAt: now },
+    });
+
+    const pA = await storeA.saveProject({ id: `${PREFIX}iso-p-a`, name: 'A proj', key: 'A', baseUrl: 'https://a.test' });
+    const pB = await storeB.saveProject({ id: `${PREFIX}iso-p-b`, name: 'B proj', key: 'B', baseUrl: 'https://b.test' });
+
+    // lists are scoped
+    assert.deepEqual((await storeA.listProjects()).map((p) => p.id), [pA.id]);
+    assert.deepEqual((await storeB.listProjects()).map((p) => p.id), [pB.id]);
+    // gets across the fence are "not found"
+    assert.equal(await storeA.getProject(pB.id), undefined);
+    assert.equal(await storeB.getProject(pA.id), undefined);
+    // a write with a foreign id is refused, never an overwrite
+    await assert.rejects(() => storeB.saveProject({ id: pA.id, name: 'hijack' }), /not found/i);
+    assert.equal((await storeA.getProject(pA.id)).name, 'A proj');
+    // deletes across the fence are no-ops
+    await storeB.deleteProject(pA.id);
+    assert.ok(await storeA.getProject(pA.id));
+
+    // suites/runs/tickets/schedules/credentials follow the same rule
+    const sA = await storeA.saveSuite({ id: `${PREFIX}iso-s-a`, projectId: pA.id, name: 'S', steps: [] });
+    assert.equal(await storeB.getSuite(sA.id), undefined);
+    await storeA.saveRun({ runId: `${PREFIX}iso-run-a`, suiteId: sA.id, projectId: pA.id, suiteName: 'S', status: 'passed', startedAt: now.toISOString(), finishedAt: now.toISOString(), steps: [], capturedMedia: [] });
+    assert.equal((await storeB.listRuns()).length, 0);
+    assert.equal(await storeB.getRun(`${PREFIX}iso-run-a`), undefined);
+    // a saveRun with a foreign runId is refused, never an overwrite
+    await assert.rejects(
+      () => storeB.saveRun({ runId: `${PREFIX}iso-run-a`, suiteId: 'x', projectId: 'x', suiteName: 'hijack', status: 'failed', startedAt: now.toISOString(), steps: [], capturedMedia: [] }),
+      /not found/i
+    );
+    assert.equal((await storeA.getRun(`${PREFIX}iso-run-a`)).suiteName, 'S');
+
+    // independent ticket numbering per workspace
+    assert.equal(await storeA.nextTicketId(), 'BUG-1');
+    assert.equal(await storeB.nextTicketId(), 'BUG-1');
+    const tA = await storeA.saveTicket({ title: 'A bug', severity: 'low', status: 'backlog' });
+    const tB = await storeB.saveTicket({ title: 'B bug', severity: 'low', status: 'backlog' });
+    assert.equal(tA.id, 'BUG-2');
+    assert.equal(tB.id, 'BUG-2');
+    assert.deepEqual((await storeA.listTickets()).map((x) => x.title), ['A bug']);
+
+    await storeA.saveSchedule({ id: `${PREFIX}iso-sched-a`, suiteId: sA.id, projectId: pA.id, name: 'n', at: now.toISOString(), recurrence: 'once' });
+    assert.equal((await storeB.listSchedules()).length, 0);
+    await storeA.saveCredential({ id: `${PREFIX}iso-cred-a`, name: 'c', projectId: pA.id }, null);
+    assert.equal((await storeB.listCredentials()).length, 0);
+
+    // plan limit: B already has 1 project and maxProjects = 1
+    await assert.rejects(
+      () => storeB.saveProject({ id: `${PREFIX}iso-p-b2`, name: 'B proj 2', key: 'B2', baseUrl: 'https://b2.test' }),
+      /Project limit reached for your plan \(1\)/
+    );
+    // updates to the existing project are still allowed under the cap
+    assert.equal((await storeB.saveProject({ id: pB.id, name: 'B renamed' })).name, 'B renamed');
+
+    // no workspace → refuse
+    const storeNone = createCloudStore({ prisma, supabase: null, localStore: createStore(tmpBaseDir()), getWorkspaceId: () => null });
+    await assert.rejects(() => storeNone.listProjects(), /No active workspace/);
+  } finally {
+    await cleanup(prisma);
+    await prisma.workspace.deleteMany({ where: { id: { startsWith: PREFIX } } });
     await prisma.$disconnect();
   }
 });

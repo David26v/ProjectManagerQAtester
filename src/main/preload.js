@@ -27,6 +27,15 @@ contextBridge.exposeInMainWorld('qaflow', {
     login: invoke('auth:login'),
     logout: invoke('auth:logout'),
   },
+  workspace: {
+    current: invoke('workspace:current'),
+    listMembers: invoke('workspace:members:list'),
+    invite: invoke('workspace:members:invite'),
+    changeRole: invoke('workspace:members:changeRole'),
+    removeMember: invoke('workspace:members:remove'),
+    rename: invoke('workspace:rename'),
+    remove: invoke('workspace:delete'),
+  },
   projects: {
     list: invoke('projects:list'),
     get: invoke('projects:get'),

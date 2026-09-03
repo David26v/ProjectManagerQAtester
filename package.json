@@ -1,8 +1,8 @@
 {
   "name": "qa-flow",
-  "version": "2.1.0",
-  "description": "Astreus Tech Tester Tool — record, run, and report browser QA suites",
-  "author": "Astreus Tech",
+  "version": "2.2.0",
+  "description": "KriJaxAutomation — record, run, and report browser QA suites",
+  "author": "KriJax Software and Development",
   "private": true,
   "main": "src/main/main.js",
   "scripts": {
@@ -12,11 +12,12 @@
     "smoke": "npm run build:renderer && electron . --smoke",
     "dist": "prisma generate && npm run build:renderer && electron-builder --win --publish never",
     "release": "prisma generate && npm run build:renderer && electron-builder --win --publish always",
-    "db:push": "node scripts/db-push.mjs"
+    "db:push": "node scripts/db-push.mjs",
+    "db:seed-workspaces": "node scripts/seed-workspaces.mjs"
   },
   "build": {
     "appId": "com.astreus.testertool",
-    "productName": "Astreus Tech Tester Tool",
+    "productName": "KriJaxAutomation",
     "directories": {
       "output": "release"
     },

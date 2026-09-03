@@ -7,6 +7,7 @@ import { RunCompletionModal } from '@/components/RunCompletionModal';
 import { UpdateReadyBanner } from '@/components/UpdateReadyBanner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Login } from '@/screens/Login';
+import { WorkspaceGate } from '@/screens/WorkspaceGate';
 import { ToastProvider, useToast } from '@/lib/toast';
 import { useHashRoute, navigate } from '@/hooks/useHashRoute';
 
@@ -30,6 +31,7 @@ const TicketDetail = lazyScreen(() => import('@/screens/TicketDetail'), 'TicketD
 const Settings = lazyScreen(() => import('@/screens/Settings'), 'Settings');
 const Repo = lazyScreen(() => import('@/screens/Repo'), 'Repo');
 const Guide = lazyScreen(() => import('@/screens/Guide'), 'Guide');
+const Workspace = lazyScreen(() => import('@/screens/Workspace'), 'Workspace');
 
 const useAppData = () => {
   const [state, setState] = useState({
@@ -262,6 +264,8 @@ const Screen = ({ route, data, onNewProject, startRun }) => {
 
   if (top === 'settings') return <Settings data={data} />;
 
+  if (top === 'workspace') return <Workspace />;
+
   if (top === 'reports') return <Reports data={data} />;
 
   return <EmptyScreen title="Not found" subtitle={`No screen registered for "#/${route.path}".`} />;
@@ -348,6 +352,7 @@ const AppShell = ({ authStatus }) => {
           activeSegment={activeNavKey(route)}
           userName={authStatus?.name || data.settings?.userName}
           userEmail={authStatus?.email || data.settings?.userEmail}
+          workspaceName={authStatus?.workspace?.name}
           version={data.version}
         />
         <main className="flex-1 overflow-y-auto">
@@ -402,6 +407,17 @@ const AuthGate = () => {
   }
   if (status.configured && !status.loggedIn) {
     return <Login onLoggedIn={refresh} />;
+  }
+  // Cloud auth without a cloud database (Prisma/Supabase admin unreachable
+  // or unconfigured) means the app is running in local-data mode — there
+  // are no workspaces to belong to, so these gates must not apply, or a
+  // half-configured cloud env would lock a working local fallback behind
+  // an unreachable "not in a workspace yet" screen forever.
+  if (status.configured && status.workspacesConfigured && !status.workspace) {
+    return <WorkspaceGate status={status} kind="none" />;
+  }
+  if (status.configured && status.workspacesConfigured && status.workspace.status === 'suspended') {
+    return <WorkspaceGate status={status} kind="suspended" />;
   }
   return <AppShell authStatus={status.configured ? status : null} />;
 }

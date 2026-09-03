@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/lib/toast';
+import { PRODUCT, VENDOR } from '@/lib/brand';
 
 // Sign-in gate for the shared cloud workspace. Invite-only — Supabase Auth
 // errors ("Invalid login credentials") surface as-is; there is deliberately
@@ -37,10 +38,10 @@ export const Login = ({ onLoggedIn }) => {
       <form onSubmit={submit} className="w-full max-w-sm rounded-xl border border-border bg-card p-8 shadow-sm">
         <div className="flex flex-col items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-xl font-bold text-primary-foreground">
-            A
+            K
           </div>
           <div className="text-center">
-            <h1 className="text-lg font-semibold text-foreground">Astreus Tech Tester Tool</h1>
+            <h1 className="text-lg font-semibold text-foreground">{PRODUCT}</h1>
             <p className="mt-1 text-sm text-muted-foreground">Sign in to your team workspace</p>
           </div>
         </div>
@@ -77,6 +78,7 @@ export const Login = ({ onLoggedIn }) => {
         <p className="mt-5 text-center text-xs text-muted-foreground">
           Access is invite-only. Ask your workspace owner for an account.
         </p>
+        <p className="mt-2 text-center text-[11px] text-muted-foreground/80">{VENDOR}</p>
       </form>
     </div>
   );

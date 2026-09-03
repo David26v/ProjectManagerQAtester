@@ -9,6 +9,7 @@ datasource db {
 
 model Project {
   id                 String   @id
+  workspaceId        String   @default("ws-krijax")
   name               String
   key                String
   baseUrl            String
@@ -20,10 +21,12 @@ model Project {
   createdAt          DateTime
   updatedAt          DateTime
   suites             Suite[]
+  @@index([workspaceId])
 }
 
 model Suite {
   id          String   @id
+  workspaceId String   @default("ws-krijax")
   projectId   String
   name        String
   description String?
@@ -34,10 +37,12 @@ model Suite {
   createdAt   DateTime
   updatedAt   DateTime
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@index([workspaceId])
 }
 
 model Run {
   runId       String    @id
+  workspaceId String    @default("ws-krijax")
   suiteId     String
   projectId   String
   suiteName   String
@@ -49,10 +54,12 @@ model Run {
   report      Json
   @@index([projectId, startedAt])
   @@index([suiteId, startedAt])
+  @@index([workspaceId])
 }
 
 model Ticket {
-  id                String   @id
+  id                String
+  workspaceId       String   @default("ws-krijax")
   title             String
   description       String?
   severity          String
@@ -68,28 +75,34 @@ model Ticket {
   checklist         Json?
   createdAt         DateTime
   updatedAt         DateTime
+  @@id([workspaceId, id])
 }
 
 model CredentialProfile {
   id          String    @id
+  workspaceId String    @default("ws-krijax")
   name        String
   projectId   String?
   environment String?
   loginUrl    String?
   username    String?
   encrypted   Boolean   @default(true)
+  mode        String    @default("session")
   deviceLabel String?
   createdAt   DateTime
   lastUsedAt  DateTime?
+  @@index([workspaceId])
 }
 
 model TicketCounter {
-  id    Int @id @default(1)
-  value Int @default(0)
+  id          Int    @id @default(autoincrement())
+  workspaceId String @unique @default("ws-krijax")
+  value       Int    @default(0)
 }
 
 model Schedule {
   id                  String    @id
+  workspaceId         String    @default("ws-krijax")
   suiteId             String
   projectId           String
   name                String
@@ -103,4 +116,55 @@ model Schedule {
   nextRunAt           DateTime?
   createdAt           DateTime
   updatedAt           DateTime
+  @@index([workspaceId])
+}
+
+model Workspace {
+  id               String    @id
+  name             String
+  slug             String    @unique
+  plan             String    @default("free")
+  maxMembers       Int?
+  maxProjects      Int?
+  status           String    @default("active")
+  pricePerMonth    Decimal?  @db.Decimal(10, 2)
+  currency         String    @default("PHP")
+  billingEmail     String?
+  stripeCustomerId String?
+  createdAt        DateTime
+  updatedAt        DateTime
+  members          WorkspaceMember[]
+  invoices         Invoice[]
+}
+
+model WorkspaceMember {
+  id          String    @id
+  workspaceId String
+  email       String
+  userId      String?
+  role        String
+  createdAt   DateTime
+  joinedAt    DateTime?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, email])
+  @@index([userId])
+}
+
+model Invoice {
+  id               String    @id
+  workspaceId      String
+  periodStart      DateTime
+  periodEnd        DateTime
+  amount           Decimal   @db.Decimal(10, 2)
+  currency         String
+  status           String    @default("draft")
+  dueDate          DateTime
+  paidAt           DateTime?
+  paymentMethod    String?
+  stripeCheckoutId String?
+  notes            String?
+  createdAt        DateTime
+  updatedAt        DateTime
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, status])
 }

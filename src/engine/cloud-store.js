@@ -28,6 +28,7 @@ function toIso(date) {
 function serializeProject(row) {
   return {
     id: row.id,
+    workspaceId: row.workspaceId,
     name: row.name,
     key: row.key,
     baseUrl: row.baseUrl,
@@ -44,6 +45,7 @@ function serializeProject(row) {
 function serializeSuite(row) {
   return {
     id: row.id,
+    workspaceId: row.workspaceId,
     projectId: row.projectId,
     name: row.name,
     description: row.description,
@@ -59,6 +61,7 @@ function serializeSuite(row) {
 function serializeCredential(row) {
   return {
     id: row.id,
+    workspaceId: row.workspaceId,
     name: row.name,
     projectId: row.projectId,
     environment: row.environment,
@@ -66,6 +69,7 @@ function serializeCredential(row) {
     username: row.username,
     encrypted: row.encrypted,
     deviceLabel: row.deviceLabel,
+    mode: row.mode,
     createdAt: toIso(row.createdAt),
     lastUsedAt: toIso(row.lastUsedAt),
   };
@@ -74,6 +78,7 @@ function serializeCredential(row) {
 function serializeTicket(row) {
   return {
     id: row.id,
+    workspaceId: row.workspaceId,
     title: row.title,
     description: row.description,
     severity: row.severity,
@@ -95,6 +100,7 @@ function serializeTicket(row) {
 function serializeSchedule(row) {
   return {
     id: row.id,
+    workspaceId: row.workspaceId,
     suiteId: row.suiteId,
     projectId: row.projectId,
     name: row.name,
@@ -115,22 +121,47 @@ function hasLocalMedia(report) {
   return (report.capturedMedia || []).some((m) => typeof m.path === 'string' && !m.path.startsWith('storage:'));
 }
 
-function createCloudStore({ prisma, supabase, localStore }) {
+function createCloudStore({ prisma, supabase, localStore, getWorkspaceId }) {
+  if (typeof getWorkspaceId !== 'function') throw new Error('createCloudStore requires getWorkspaceId()');
+
+  // Every tenant query goes through here. Returning null (signed in but no
+  // workspace, or workspace suspended) refuses the call outright — the
+  // renderer's gate screens normally prevent reaching this, but the store
+  // is the last line of defense and must not depend on the UI.
+  const ws = () => {
+    const id = getWorkspaceId();
+    if (!id) throw new Error('No active workspace');
+    return id;
+  };
+  const notFound = () => new Error('Not found in this workspace');
+
   // ---- projects ----
 
   async function listProjects() {
-    const rows = await prisma.project.findMany({ orderBy: { createdAt: 'asc' } });
+    const rows = await prisma.project.findMany({ where: { workspaceId: ws() }, orderBy: { createdAt: 'asc' } });
     return rows.map(serializeProject);
   }
 
   async function getProject(id) {
-    const row = await prisma.project.findUnique({ where: { id } });
+    const row = await prisma.project.findFirst({ where: { id, workspaceId: ws() } });
     return row ? serializeProject(row) : undefined;
   }
 
   async function saveProject(p) {
+    const workspaceId = ws();
     const id = p.id || crypto.randomUUID();
-    const existing = p.id ? await prisma.project.findUnique({ where: { id: p.id } }) : null;
+    const existingAny = p.id ? await prisma.project.findUnique({ where: { id: p.id } }) : null;
+    if (existingAny && existingAny.workspaceId !== workspaceId) throw notFound();
+    const existing = existingAny;
+    if (!existing) {
+      const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+      if (workspace && workspace.maxProjects != null) {
+        const count = await prisma.project.count({ where: { workspaceId } });
+        if (count >= workspace.maxProjects) {
+          throw new Error(`Project limit reached for your plan (${workspace.maxProjects}). Contact KriJax Software and Development to upgrade.`);
+        }
+      }
+    }
     const now = new Date();
     const data = {
       name: p.name ?? existing?.name,
@@ -145,7 +176,7 @@ function createCloudStore({ prisma, supabase, localStore }) {
     };
     const row = await prisma.project.upsert({
       where: { id },
-      create: { id, ...data, createdAt: existing?.createdAt || (p.createdAt ? new Date(p.createdAt) : now) },
+      create: { id, workspaceId, ...data, createdAt: existing?.createdAt || (p.createdAt ? new Date(p.createdAt) : now) },
       update: data,
     });
     return serializeProject(row);
@@ -155,31 +186,35 @@ function createCloudStore({ prisma, supabase, localStore }) {
     // Run rows aren't FK-linked to Project (only to Suite by plain id), so
     // clear them explicitly before the delete — Suite rows cascade via the
     // `onDelete: Cascade` relation, but that stops at Suite.
-    const suites = await prisma.suite.findMany({ where: { projectId: id }, select: { id: true } });
+    const workspaceId = ws();
+    const suites = await prisma.suite.findMany({ where: { projectId: id, workspaceId }, select: { id: true } });
     if (suites.length) {
-      await prisma.run.deleteMany({ where: { suiteId: { in: suites.map((s) => s.id) } } });
+      await prisma.run.deleteMany({ where: { suiteId: { in: suites.map((s) => s.id) }, workspaceId } });
     }
-    await prisma.project.deleteMany({ where: { id } });
+    await prisma.project.deleteMany({ where: { id, workspaceId } });
   }
 
   // ---- suites ----
 
   async function listSuites(projectId) {
     const rows = await prisma.suite.findMany({
-      where: projectId ? { projectId } : undefined,
+      where: { workspaceId: ws(), ...(projectId ? { projectId } : {}) },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map(serializeSuite);
   }
 
   async function getSuite(id) {
-    const row = await prisma.suite.findUnique({ where: { id } });
+    const row = await prisma.suite.findFirst({ where: { id, workspaceId: ws() } });
     return row ? serializeSuite(row) : undefined;
   }
 
   async function saveSuite(s) {
+    const workspaceId = ws();
     const id = s.id || crypto.randomUUID();
-    const existing = s.id ? await prisma.suite.findUnique({ where: { id: s.id } }) : null;
+    const existingAny = s.id ? await prisma.suite.findUnique({ where: { id: s.id } }) : null;
+    if (existingAny && existingAny.workspaceId !== workspaceId) throw notFound();
+    const existing = existingAny;
     const now = new Date();
     const data = {
       projectId: s.projectId ?? existing?.projectId,
@@ -193,7 +228,7 @@ function createCloudStore({ prisma, supabase, localStore }) {
     };
     const row = await prisma.suite.upsert({
       where: { id },
-      create: { id, ...data, createdAt: existing?.createdAt || (s.createdAt ? new Date(s.createdAt) : now) },
+      create: { id, workspaceId, ...data, createdAt: existing?.createdAt || (s.createdAt ? new Date(s.createdAt) : now) },
       update: data,
     });
     return serializeSuite(row);
@@ -205,8 +240,9 @@ function createCloudStore({ prisma, supabase, localStore }) {
     // are never cleaned up on suite delete; leaving orphan Postgres rows
     // behind isn't acceptable for shared cloud storage, so this cloud store
     // does the cleanup the plan/brief call for).
-    await prisma.run.deleteMany({ where: { suiteId: id } });
-    await prisma.suite.deleteMany({ where: { id } });
+    const workspaceId = ws();
+    await prisma.run.deleteMany({ where: { suiteId: id, workspaceId } });
+    await prisma.suite.deleteMany({ where: { id, workspaceId } });
   }
 
   // ---- runs ----
@@ -216,9 +252,13 @@ function createCloudStore({ prisma, supabase, localStore }) {
   }
 
   async function saveRun(report) {
+    const workspaceId = ws();
     const runId = report.runId || crypto.randomUUID();
+    const existingAny = await prisma.run.findUnique({ where: { runId } });
+    if (existingAny && existingAny.workspaceId !== workspaceId) throw notFound();
     let saved = { ...report, runId };
     const columnsFor = (r) => ({
+      workspaceId,
       suiteId: r.suiteId,
       projectId: r.projectId,
       suiteName: r.suiteName,
@@ -262,7 +302,7 @@ function createCloudStore({ prisma, supabase, localStore }) {
   }
 
   async function getRun(runId) {
-    const row = await prisma.run.findUnique({ where: { runId } });
+    const row = await prisma.run.findFirst({ where: { runId, workspaceId: ws() } });
     return row ? row.report : undefined;
   }
 
@@ -270,7 +310,7 @@ function createCloudStore({ prisma, supabase, localStore }) {
     const projectId = typeof filter === 'string' ? filter : filter && typeof filter === 'object' ? filter.projectId : undefined;
     const suiteId = filter && typeof filter === 'object' ? filter.suiteId : undefined;
 
-    const where = {};
+    const where = { workspaceId: ws() };
     if (projectId) where.projectId = projectId;
     if (suiteId) where.suiteId = suiteId;
 
@@ -285,15 +325,18 @@ function createCloudStore({ prisma, supabase, localStore }) {
 
   async function listCredentials(projectId) {
     const rows = await prisma.credentialProfile.findMany({
-      where: projectId ? { projectId } : undefined,
+      where: { workspaceId: ws(), ...(projectId ? { projectId } : {}) },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map(serializeCredential);
   }
 
   async function saveCredential(meta, encryptedBuffer) {
+    const workspaceId = ws();
     const id = meta.id || crypto.randomUUID();
-    const existing = meta.id ? await prisma.credentialProfile.findUnique({ where: { id: meta.id } }) : null;
+    const existingAny = meta.id ? await prisma.credentialProfile.findUnique({ where: { id: meta.id } }) : null;
+    if (existingAny && existingAny.workspaceId !== workspaceId) throw notFound();
+    const existing = existingAny;
     const now = new Date();
     const data = {
       name: meta.name ?? existing?.name,
@@ -303,11 +346,12 @@ function createCloudStore({ prisma, supabase, localStore }) {
       username: meta.username !== undefined ? meta.username : existing?.username ?? null,
       encrypted: meta.encrypted !== undefined ? meta.encrypted : existing?.encrypted ?? true,
       deviceLabel: meta.deviceLabel !== undefined ? meta.deviceLabel : existing?.deviceLabel ?? null,
+      mode: meta.mode ?? existing?.mode ?? 'session',
       lastUsedAt: meta.lastUsedAt !== undefined ? (meta.lastUsedAt ? new Date(meta.lastUsedAt) : null) : existing?.lastUsedAt ?? null,
     };
     const row = await prisma.credentialProfile.upsert({
       where: { id },
-      create: { id, ...data, createdAt: existing?.createdAt || (meta.createdAt ? new Date(meta.createdAt) : now) },
+      create: { id, workspaceId, ...data, createdAt: existing?.createdAt || (meta.createdAt ? new Date(meta.createdAt) : now) },
       update: data,
     });
 
@@ -323,7 +367,7 @@ function createCloudStore({ prisma, supabase, localStore }) {
   }
 
   async function deleteCredential(id) {
-    await prisma.credentialProfile.deleteMany({ where: { id } });
+    await prisma.credentialProfile.deleteMany({ where: { id, workspaceId: ws() } });
     localStore.deleteCredential(id);
   }
 
@@ -339,23 +383,27 @@ function createCloudStore({ prisma, supabase, localStore }) {
     // on the row lock and each gets a distinct, strictly increasing value
     // without an explicit SELECT-then-UPDATE race. Wrapped in `$transaction`
     // for a single round trip and to keep the atomicity contract explicit.
-    const counter = await prisma.$transaction(async (tx) => {
-      return tx.ticketCounter.upsert({
-        where: { id: 1 },
-        create: { id: 1, value: 1 },
+    const workspaceId = ws();
+    const counter = await prisma.$transaction(async (tx) =>
+      tx.ticketCounter.upsert({
+        where: { workspaceId },
+        create: { workspaceId, value: 1 },
         update: { value: { increment: 1 } },
-      });
-    });
+      })
+    );
     return `BUG-${counter.value}`;
   }
 
   async function listTickets() {
-    const rows = await prisma.ticket.findMany({ orderBy: { createdAt: 'asc' } });
+    const rows = await prisma.ticket.findMany({ where: { workspaceId: ws() }, orderBy: { createdAt: 'asc' } });
     return rows.map(serializeTicket);
   }
 
   async function saveTicket(t) {
-    const existing = t.id ? await prisma.ticket.findUnique({ where: { id: t.id } }) : null;
+    const workspaceId = ws();
+    const existing = t.id
+      ? await prisma.ticket.findUnique({ where: { workspaceId_id: { workspaceId, id: t.id } } })
+      : null;
     const id = t.id || (await nextTicketId());
     const now = new Date();
     const data = {
@@ -375,15 +423,15 @@ function createCloudStore({ prisma, supabase, localStore }) {
       updatedAt: now,
     };
     const row = await prisma.ticket.upsert({
-      where: { id },
-      create: { id, ...data, createdAt: existing?.createdAt || (t.createdAt ? new Date(t.createdAt) : now) },
+      where: { workspaceId_id: { workspaceId, id } },
+      create: { id, workspaceId, ...data, createdAt: existing?.createdAt || (t.createdAt ? new Date(t.createdAt) : now) },
       update: data,
     });
     return serializeTicket(row);
   }
 
   async function deleteTicket(id) {
-    await prisma.ticket.deleteMany({ where: { id } });
+    await prisma.ticket.deleteMany({ where: { id, workspaceId: ws() } });
   }
 
   // ---- settings ----
@@ -402,7 +450,7 @@ function createCloudStore({ prisma, supabase, localStore }) {
   // schedules), so — unlike credentials/settings — these live in Postgres.
 
   async function listSchedules() {
-    const rows = await prisma.schedule.findMany();
+    const rows = await prisma.schedule.findMany({ where: { workspaceId: ws() } });
     const schedules = rows.map(serializeSchedule);
     // Nulls (no future occurrence, e.g. a lapsed "once") sort last — mirrors
     // v1's in-memory sort exactly.
@@ -414,8 +462,11 @@ function createCloudStore({ prisma, supabase, localStore }) {
   }
 
   async function saveSchedule(s) {
+    const workspaceId = ws();
     const id = s.id || `sched-${crypto.randomUUID()}`;
-    const existing = s.id ? await prisma.schedule.findUnique({ where: { id: s.id } }) : null;
+    const existingAny = s.id ? await prisma.schedule.findUnique({ where: { id: s.id } }) : null;
+    if (existingAny && existingAny.workspaceId !== workspaceId) throw notFound();
+    const existing = existingAny;
     const now = new Date();
     const data = {
       suiteId: s.suiteId ?? existing?.suiteId,
@@ -433,14 +484,14 @@ function createCloudStore({ prisma, supabase, localStore }) {
     };
     const row = await prisma.schedule.upsert({
       where: { id },
-      create: { id, ...data, createdAt: existing?.createdAt || (s.createdAt ? new Date(s.createdAt) : now) },
+      create: { id, workspaceId, ...data, createdAt: existing?.createdAt || (s.createdAt ? new Date(s.createdAt) : now) },
       update: data,
     });
     return serializeSchedule(row);
   }
 
   async function deleteSchedule(id) {
-    await prisma.schedule.deleteMany({ where: { id } });
+    await prisma.schedule.deleteMany({ where: { id, workspaceId: ws() } });
   }
 
   return {

@@ -18,10 +18,12 @@ const { app, BrowserWindow, protocol } = require('electron');
 
 const { createStore } = require('../engine/store.js');
 const { createCloudStore } = require('../engine/cloud-store.js');
+const { createWorkspaceService } = require('../engine/workspaces.js');
 const { createApi } = require('../engine/api.js');
 const { runSuite } = require('../engine/runner.js');
 const { registerIpc } = require('./ipc.js');
 const { createAuth } = require('./auth.js');
+const { createTenant } = require('./tenant.js');
 const { createScheduler } = require('./scheduler.js');
 const { createBrowserBootstrap } = require('./browser-bootstrap.js');
 const { createUpdates } = require('./updates.js');
@@ -67,10 +69,23 @@ try {
   console.warn(`[qaflow] Supabase admin client unavailable: ${e.message}`);
 }
 
+let workspaces = null;
+let tenant = null; // assigned in whenReady once auth exists
+
 let store = localStore;
 if (prisma && supabaseAdmin) {
   try {
-    store = createCloudStore({ prisma, supabase: supabaseAdmin, localStore });
+    workspaces = createWorkspaceService({
+      prisma,
+      supabase: supabaseAdmin,
+      platformAdminEmails: (process.env.ASTREUS_PLATFORM_ADMINS || '').split(',').map((e) => e.trim()).filter(Boolean),
+    });
+    store = createCloudStore({
+      prisma,
+      supabase: supabaseAdmin,
+      localStore,
+      getWorkspaceId: () => (tenant ? tenant.getWorkspaceId() : null),
+    });
   } catch (e) {
     console.warn(`[qaflow] cloud store unavailable — running on local data: ${e.message}`);
     store = localStore;
@@ -135,7 +150,7 @@ function createWindow() {
     height: 980,
     minWidth: 1200,
     minHeight: 800,
-    title: 'Astreus Tech Tester Tool',
+    title: 'KriJaxAutomation',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -237,6 +252,7 @@ app.whenReady().then(async () => {
   // module scope (see the comment above `let auth = null`).
   try {
     auth = createAuth({ userDataDir });
+    tenant = createTenant({ auth, workspaces });
   } catch (e) {
     console.warn(`[qaflow] auth unavailable — IPC will run ungated: ${e.message}`);
   }
@@ -250,6 +266,8 @@ app.whenReady().then(async () => {
     getBrowserStatus: () => lastBrowserStatus,
     supabase: supabaseAdmin,
     auth,
+    tenant,
+    workspaces,
     notifyAuthStatus: sendAuthStatus,
     baseDir,
   });
@@ -284,6 +302,40 @@ app.whenReady().then(async () => {
     });
   }
 
+  // Scheduler is best-effort — a failure here (e.g. a corrupt
+  // schedules.json, or an unreachable cloud store) must not take down the
+  // app; `--smoke` already exits via the `did-finish-load` listener above
+  // regardless of this. In local/no-auth mode there's no workspace gate to
+  // wait for, so it starts immediately below. When auth IS wired, its
+  // one-shot `sweepLapsed()` would race tenant resolution and hit the
+  // workspace-scoped store before any workspace is active — so it is
+  // instead started the first time a workspace resolves (alongside
+  // `bootApiOnce()`), guarded by `schedulerStarted` so repeated auth
+  // changes don't start it twice.
+  let schedulerStarted = false;
+  function startSchedulerOnce() {
+    if (schedulerStarted) return;
+    try {
+      const scheduler = createScheduler({
+        store,
+        executeRun,
+        notify: (schedule, status) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('schedules:fired', { schedule, status });
+          }
+        },
+      });
+      scheduler.start();
+      // Only latch the flag once start() actually succeeds — a transient
+      // first failure (e.g. a corrupt schedules.json that resolves itself
+      // on the next resolve) must not permanently disable the scheduler for
+      // the rest of the process's life.
+      schedulerStarted = true;
+    } catch (e) {
+      console.warn(`[qaflow] scheduler failed to start: ${e.message}`);
+    }
+  }
+
   // API boot: if auth isn't wired at all (no env — smoke, or a dev checkout
   // with no `.env`), there's no login surface to gate behind, so boot
   // immediately like before Task 4. If auth IS wired, boot once a session is
@@ -291,35 +343,24 @@ app.whenReady().then(async () => {
   // the first `auth:changed` with `loggedIn: true`.
   if (auth) {
     auth.ready.then(() => {
-      if (auth.getUser()) bootApiOnce();
+      if (auth.getUser() && tenant.getWorkspaceId()) {
+        bootApiOnce();
+        startSchedulerOnce();
+      }
     });
-    auth.onChange((status) => {
-      if (status.loggedIn) bootApiOnce();
+    auth.onChange(async () => {
+      await tenant.resolve();
+      if (tenant.getWorkspaceId()) {
+        bootApiOnce();
+        startSchedulerOnce();
+      }
     });
   } else {
     bootApiOnce();
+    startSchedulerOnce();
   }
 
   await bootMediaBucket();
-
-  // Scheduler is best-effort — a failure here (e.g. a corrupt
-  // schedules.json, or an unreachable cloud store) must not take down the
-  // app; `--smoke` already exits via the `did-finish-load` listener above
-  // regardless of this.
-  try {
-    const scheduler = createScheduler({
-      store,
-      executeRun,
-      notify: (schedule, status) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('schedules:fired', { schedule, status });
-        }
-      },
-    });
-    scheduler.start();
-  } catch (e) {
-    console.warn(`[qaflow] scheduler failed to start: ${e.message}`);
-  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();

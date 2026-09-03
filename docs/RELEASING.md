@@ -1,6 +1,6 @@
-# Astreus Tech Tester Tool — Releasing
+# KriJaxAutomation — Releasing
 
-Astreus Tech Tester Tool ships auto-updates through `electron-updater` reading GitHub Releases
+KriJaxAutomation ships auto-updates through `electron-updater` reading GitHub Releases
 on `David26v/ProjectManagerQAtester` (see the `publish` block in
 `package.json`). Installed copies check for a new release on boot (after a
 short delay) and every 4 hours, download automatically, and prompt the user
@@ -39,7 +39,7 @@ You need a GitHub account with access to this repo. Nothing else.
 9. Once green, go to the **Releases** page (right sidebar of the repo's main
    page, or `github.com/David26v/ProjectManagerQAtester/releases`) and
    confirm the newest release has:
-   - `Astreus Tech Tester Tool Setup <version>.exe` — the installer.
+   - `KriJaxAutomation Setup <version>.exe` — the installer.
    - `latest.yml` — the update manifest `electron-updater` polls for.
    - confirm the release is NOT marked Draft — `electron-updater` cannot see
      draft releases, so a draft release is invisible to installed clients
@@ -49,7 +49,7 @@ You need a GitHub account with access to this repo. Nothing else.
    expect the update yet; re-run the workflow with the next version number
    once you've worked out what's wrong.
 10. **Done.** You don't need to distribute the `.exe` yourself. Everyone with
-    QA Flow already installed will pick up the update automatically on their
+    KriJaxAutomation already installed will pick up the update automatically on their
     next app launch (or within 4 hours if the app is left running) — just
     let them know a new version is out if there's something they should
     watch for.
@@ -99,13 +99,39 @@ debug the build locally before trusting CI with it.
    npm run release
    ```
 5. **Verify the release** on GitHub — the Release should contain:
-   - `Astreus Tech Tester Tool Setup <version>.exe` — the NSIS installer.
+   - `KriJaxAutomation Setup <version>.exe` — the NSIS installer.
    - `latest.yml` — the update manifest `electron-updater` polls for.
    - the matching `.exe.blockmap` (used for differential downloads).
 
    If either the `.exe` or `latest.yml` is missing, installed clients won't
    see the update — re-run `npm run release` rather than uploading assets by
    hand.
+
+## Upgrading to 2.2 (multi-tenant)
+
+2.2 introduces Workspaces (multi-tenant data) and changes `Ticket`'s primary
+key to the compound `@@id([workspaceId, id])`. This cutover needs a few
+manual steps, in order, that a routine release doesn't:
+
+1. **Back up the `astreus` schema first.** The primary-key change and the
+   seed step below both touch existing rows — take a schema backup/snapshot
+   before running anything so this is reversible if something goes wrong.
+2. **Run `npm run db:push`.** It will prompt for confirmation because
+   `Ticket`'s primary key is changing to the compound
+   `@@id([workspaceId, id])` — review the prompt before accepting.
+3. **Run `npm run db:seed-workspaces` with `ASTREUS_PLATFORM_ADMINS` set.**
+   This creates the `ws-krijax` house workspace, grants each platform admin
+   an owner membership in it, and syncs the `TicketCounter` sequence. It is
+   idempotent — safe to re-run.
+4. **Existing cloud users who are NOT platform admins will land on the
+   "You're not in a workspace yet" screen** until an owner invites them from
+   the Workspace screen. Their data is intact under `ws-krijax` — this is
+   an access gate, not data loss.
+5. **Push the release promptly after the migration.** Installed 2.1 clients
+   will error on ticket queries during the auto-update window, because the
+   primary-key change is not backward compatible with the 2.1 query shape —
+   minimize that window rather than leaving the migration applied with the
+   old client still in the wild.
 
 ## Notes
 

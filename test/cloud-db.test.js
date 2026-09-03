@@ -4,7 +4,7 @@ require('dotenv').config();
 
 // Table names as Prisma creates them (quoted, PascalCase — matches the model
 // names 1:1 since schema.prisma has no @@map overrides).
-const ASTREUS_TABLES = ['Project', 'Suite', 'Run', 'Ticket', 'CredentialProfile', 'TicketCounter', 'Schedule'];
+const ASTREUS_TABLES = ['Project', 'Suite', 'Run', 'Ticket', 'CredentialProfile', 'TicketCounter', 'Schedule', 'Workspace', 'WorkspaceMember', 'Invoice'];
 
 test('cloud db connectivity and schema', async (t) => {
   if (!process.env.DATABASE_URL) return t.skip('DATABASE_URL not set');
@@ -12,7 +12,7 @@ test('cloud db connectivity and schema', async (t) => {
   const prisma = createPrisma();
   try {
     await prisma.$queryRaw`SELECT 1`;
-    for (const model of ['project', 'suite', 'run', 'ticket', 'credentialProfile', 'ticketCounter', 'schedule']) {
+    for (const model of ['project', 'suite', 'run', 'ticket', 'credentialProfile', 'ticketCounter', 'schedule', 'workspace', 'workspaceMember', 'invoice']) {
       assert.ok(Number.isInteger(await prisma[model].count()));
     }
 
@@ -29,7 +29,7 @@ test('cloud db connectivity and schema', async (t) => {
       assert.ok(!publicNames.has(name), `astreus table "${name}" must not exist in public schema`);
     }
 
-    // And confirm astreus itself has exactly the 6 expected tables — no more,
+    // And confirm astreus itself has exactly the 10 expected tables — no more,
     // no fewer — as a schema-drift tripwire.
     const astreusTables = await prisma.$queryRaw`
       SELECT table_name FROM information_schema.tables WHERE table_schema = 'astreus'

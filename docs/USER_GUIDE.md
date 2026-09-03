@@ -1,6 +1,6 @@
-# Astreus Tech Tester Tool — User Guide
+# KriJaxAutomation — User Guide
 
-Astreus Tech Tester Tool (formerly QA Flow) lets a QA tester record a browser
+KriJaxAutomation (formerly Astreus Tech Tester Tool / QA Flow) lets a QA tester record a browser
 flow once, replay it as an automated test with full evidence capture, and turn
 failures into shareable bug reports — without writing any code.
 
@@ -21,6 +21,48 @@ password-reset link, so ask the owner if you're locked out.
 - Everything you see — projects, suites, runs, tickets — lives in the
   **shared cloud workspace**: your teammates see the same data live.
 - Sign out from **Settings → Account**.
+
+## 0.5 Workspaces and roles
+
+Everything you see belongs to your **workspace** — your company's own,
+isolated space. You're a member of exactly one at a time; projects, suites,
+runs, tickets, credentials, and schedules are visible only to your
+workspace's members, never to another company's.
+
+Three roles, from least to most power:
+
+| Role | Can do |
+|---|---|
+| **Member** | All QA work — record, run, report, tickets, credentials, schedules, repository |
+| **Admin** | Everything a Member can, plus invite/remove members, change member roles, and delete projects |
+| **Owner** | Everything an Admin can, plus rename or delete the whole workspace |
+
+Only an owner can change or remove another owner.
+
+**Inviting a teammate** — an owner or admin opens **Workspace** in the
+sidebar and invites by email. If that email has never signed in before, the
+app creates a login for them on the spot and shows a **one-time temporary
+password** in a dialog — copy it and hand it to them yourself (chat, in
+person); it's shown once and never stored or logged, so if it's lost, remove
+and re-invite them. If the email already has an account (e.g. they're
+between jobs and already used the app elsewhere), they just gain
+membership and sign in with their existing password.
+
+**Plan limits** — each workspace has a plan with an optional member and
+project limit. Inviting past the member limit, or creating a project past
+the project limit, is refused with a message to contact **KriJax Software
+and Development** to upgrade.
+
+**If something looks locked out:**
+
+- *"You're not in a workspace yet"* — you're signed in, but no one has
+  invited you to a workspace yet. Ask whoever manages your team's
+  KriJaxAutomation account to invite your email, then sign out and back in.
+- *"This workspace is suspended"* — your whole workspace has been paused.
+  Contact KriJax Software and Development to restore access.
+
+Both screens offer **Sign out** and nothing else — there's no way around
+either from inside the app.
 
 ## 1. Create a project (Connect)
 
@@ -240,7 +282,7 @@ every non-archived suite tagged `smoke` for that project.
 
 ## 12. Updates
 
-An installed copy of Astreus Tech Tester Tool checks for a new version automatically on
+An installed copy of KriJaxAutomation checks for a new version automatically on
 launch and every few hours, downloads it in the background, and shows a
 "Restart to apply" banner once it's ready — just click **Restart**. You can
 also trigger a manual check from **Settings → About → Check for updates**.

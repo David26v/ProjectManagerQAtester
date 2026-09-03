@@ -1,6 +1,6 @@
 # QA Training — How the Whole System Works
 
-A hands-on orientation for a QA tester joining the Astreus Tech Tester Tool
+A hands-on orientation for a QA tester joining the KriJaxAutomation
 workspace. Read this top to bottom once, then keep it open as a reference —
 it explains the *mental model* first, then walks the daily workflow.
 
