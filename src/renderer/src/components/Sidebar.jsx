@@ -10,6 +10,7 @@ import {
   BookOpen,
   Settings,
   ChevronUp,
+  Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PRODUCT, VENDOR } from '@/lib/brand';
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { label: 'Kanban Board', href: '#/kanban', icon: LayoutGrid, match: 'kanban' },
   { label: 'Reports', href: '#/reports', icon: FileBarChart2, match: 'reports' },
   { label: 'Credentials', href: '#/credentials', icon: KeyRound, match: 'credentials' },
+  { label: 'Workspace', href: '#/workspace', icon: Building2, match: 'workspace' },
   { label: 'Repository', href: '#/repo', icon: GitBranch, match: 'repo' },
   { label: 'Guide', href: '#/guide', icon: BookOpen, match: 'guide' },
   { label: 'Settings', href: '#/settings', icon: Settings, match: 'settings' },

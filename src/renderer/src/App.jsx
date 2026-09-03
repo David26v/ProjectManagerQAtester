@@ -31,6 +31,7 @@ const TicketDetail = lazyScreen(() => import('@/screens/TicketDetail'), 'TicketD
 const Settings = lazyScreen(() => import('@/screens/Settings'), 'Settings');
 const Repo = lazyScreen(() => import('@/screens/Repo'), 'Repo');
 const Guide = lazyScreen(() => import('@/screens/Guide'), 'Guide');
+const Workspace = lazyScreen(() => import('@/screens/Workspace'), 'Workspace');
 
 const useAppData = () => {
   const [state, setState] = useState({
@@ -262,6 +263,8 @@ const Screen = ({ route, data, onNewProject, startRun }) => {
   if (top === 'guide') return <Guide />;
 
   if (top === 'settings') return <Settings data={data} />;
+
+  if (top === 'workspace') return <Workspace />;
 
   if (top === 'reports') return <Reports data={data} />;
 
