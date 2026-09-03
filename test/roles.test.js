@@ -7,9 +7,10 @@ test('roles: owner can do everything', () => {
   for (const action of ACTIONS) assert.equal(can('owner', action), true, action);
 });
 
-test('roles: admin can do everything except delete_workspace', () => {
+test('roles: admin can do everything except delete_workspace and edit_workspace', () => {
+  const denied = new Set(['delete_workspace', 'edit_workspace']);
   for (const action of ACTIONS) {
-    assert.equal(can('admin', action), action !== 'delete_workspace', action);
+    assert.equal(can('admin', action), !denied.has(action), action);
   }
 });
 

@@ -159,7 +159,7 @@ const createWorkspaceService = ({ prisma, supabase, platformAdminEmails = [] }) 
     if (clash) throw new Error('This email already belongs to another workspace.');
     const current = await usage(workspaceId);
     if (current.maxMembers != null && current.members >= current.maxMembers) {
-      throw new Error(`Member limit reached for your plan (${current.maxMembers}). Contact KriJax to upgrade.`);
+      throw new Error(`Member limit reached for your plan (${current.maxMembers}). Contact KriJax Software and Development to upgrade.`);
     }
     const login = await ensureLogin(normalized);
     const member = await addMembership(workspaceId, normalized, role, login.userId);

@@ -158,7 +158,7 @@ function createCloudStore({ prisma, supabase, localStore, getWorkspaceId }) {
       if (workspace && workspace.maxProjects != null) {
         const count = await prisma.project.count({ where: { workspaceId } });
         if (count >= workspace.maxProjects) {
-          throw new Error(`Project limit reached for your plan (${workspace.maxProjects}). Contact KriJax to upgrade.`);
+          throw new Error(`Project limit reached for your plan (${workspace.maxProjects}). Contact KriJax Software and Development to upgrade.`);
         }
       }
     }
