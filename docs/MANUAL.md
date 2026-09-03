@@ -29,6 +29,27 @@ the workspace.
 Invite-only email + password from the workspace owner. Session persists
 between launches (encrypted on-device). Sign out: Settings → Account.
 
+## 2.5 Workspaces and roles
+
+Your data lives in your **workspace** — one company/team, isolated from
+everyone else's. You belong to exactly one at a time.
+
+| Role | Can do |
+|---|---|
+| Member | All QA work (record, run, report, tickets, credentials, schedules, repository) |
+| Admin | + invite/remove members, change roles, delete projects |
+| Owner | + rename/delete the workspace |
+
+Only an owner can touch another owner. **Workspace** in the sidebar (owner/
+admin only for management) invites by email — a brand-new email gets a
+login and a **one-time temp password** shown once in a dialog to hand over
+out-of-band; an existing email just gains membership. Exceeding the plan's
+member/project limit is refused with a message to contact KriJax Software
+and Development.
+
+No membership yet → "You're not in a workspace yet"; workspace paused →
+"This workspace is suspended". Both screens offer only Sign out.
+
 ## 3. Set up a project
 
 Projects → **+ New Project** (Name, Key, Base URL). Project Detail has six

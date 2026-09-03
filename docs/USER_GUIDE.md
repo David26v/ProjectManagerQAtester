@@ -22,6 +22,48 @@ password-reset link, so ask the owner if you're locked out.
   **shared cloud workspace**: your teammates see the same data live.
 - Sign out from **Settings → Account**.
 
+## 0.5 Workspaces and roles
+
+Everything you see belongs to your **workspace** — your company's own,
+isolated space. You're a member of exactly one at a time; projects, suites,
+runs, tickets, credentials, and schedules are visible only to your
+workspace's members, never to another company's.
+
+Three roles, from least to most power:
+
+| Role | Can do |
+|---|---|
+| **Member** | All QA work — record, run, report, tickets, credentials, schedules, repository |
+| **Admin** | Everything a Member can, plus invite/remove members, change member roles, and delete projects |
+| **Owner** | Everything an Admin can, plus rename or delete the whole workspace |
+
+Only an owner can change or remove another owner.
+
+**Inviting a teammate** — an owner or admin opens **Workspace** in the
+sidebar and invites by email. If that email has never signed in before, the
+app creates a login for them on the spot and shows a **one-time temporary
+password** in a dialog — copy it and hand it to them yourself (chat, in
+person); it's shown once and never stored or logged, so if it's lost, remove
+and re-invite them. If the email already has an account (e.g. they're
+between jobs and already used the app elsewhere), they just gain
+membership and sign in with their existing password.
+
+**Plan limits** — each workspace has a plan with an optional member and
+project limit. Inviting past the member limit, or creating a project past
+the project limit, is refused with a message to contact **KriJax Software
+and Development** to upgrade.
+
+**If something looks locked out:**
+
+- *"You're not in a workspace yet"* — you're signed in, but no one has
+  invited you to a workspace yet. Ask whoever manages your team's
+  KriJaxAutomation account to invite your email, then sign out and back in.
+- *"This workspace is suspended"* — your whole workspace has been paused.
+  Contact KriJax Software and Development to restore access.
+
+Both screens offer **Sign out** and nothing else — there's no way around
+either from inside the app.
+
 ## 1. Create a project (Connect)
 
 A *project* is the app or site you test (e.g. "Web Dashboard",

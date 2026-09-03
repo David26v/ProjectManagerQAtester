@@ -9,17 +9,18 @@ import { cn } from '@/lib/utils';
 const SECTIONS = [
   { id: 'concepts', title: '1 · Tests, suites, runs' },
   { id: 'first-test', title: '2 · Make your first test' },
-  { id: 'running', title: '3 · Running tests' },
-  { id: 'detection', title: '4 · How bugs get caught' },
-  { id: 'triage', title: '5 · Reading results' },
-  { id: 'reports', title: '6 · Reports & handoff' },
-  { id: 'kanban', title: '7 · Kanban bug tracking' },
-  { id: 'credentials', title: '8 · Testing behind a login' },
-  { id: 'scheduling', title: '9 · Scheduling' },
-  { id: 'repository', title: '10 · Repository (git)' },
-  { id: 'steps', title: '11 · Step types' },
-  { id: 'cli', title: '12 · CLI & automation' },
-  { id: 'troubleshooting', title: '13 · Troubleshooting' },
+  { id: 'workspace', title: '3 · Workspace & members' },
+  { id: 'running', title: '4 · Running tests' },
+  { id: 'detection', title: '5 · How bugs get caught' },
+  { id: 'triage', title: '6 · Reading results' },
+  { id: 'reports', title: '7 · Reports & handoff' },
+  { id: 'kanban', title: '8 · Kanban bug tracking' },
+  { id: 'credentials', title: '9 · Testing behind a login' },
+  { id: 'scheduling', title: '10 · Scheduling' },
+  { id: 'repository', title: '11 · Repository (git)' },
+  { id: 'steps', title: '12 · Step types' },
+  { id: 'cli', title: '13 · CLI & automation' },
+  { id: 'troubleshooting', title: '14 · Troubleshooting' },
 ];
 
 const Callout = ({ tone = 'info', icon: Icon = Info, children }) => {
@@ -168,7 +169,7 @@ export const Guide = () => {
               </>,
               <>
                 Enter the <strong>starting URL</strong>, pick the <strong>project</strong>, and — if the flow needs a login — a{' '}
-                <strong>credential profile</strong> (§8) so recording starts signed in.
+                <strong>credential profile</strong> (§9) so recording starts signed in.
               </>,
               <>
                 Click <strong>Start Recording</strong>. A real Chrome window opens — use the site like a real user. Every action appears live in the
@@ -190,7 +191,42 @@ export const Guide = () => {
           </Callout>
         </Section>
 
-        <Section id="running" title="3 · Running tests">
+        <Section id="workspace" title="3 · Workspace & members">
+          <p>
+            Everything here belongs to your <strong>workspace</strong> — your company's own, isolated space. You're a member of exactly one at a time;
+            nothing you see is visible to any other company's workspace.
+          </p>
+          <GuideTable
+            head={['Role', 'Can do']}
+            rows={[
+              ['Member', 'All QA work — record, run, report, tickets, credentials, schedules, repository'],
+              ['Admin', 'Everything a Member can, plus invite/remove members, change roles, and delete projects'],
+              ['Owner', 'Everything an Admin can, plus rename or delete the whole workspace'],
+            ]}
+          />
+          <p>Only an owner can change or remove another owner.</p>
+          <Bullets
+            items={[
+              <>
+                <strong>Inviting a teammate</strong> — an owner or admin opens <strong>Workspace</strong> in the sidebar and invites by email. A
+                brand-new email gets a login on the spot and a <strong>one-time temporary password</strong> shown once in a dialog — hand it over
+                yourself; it's never stored or logged. An email that already has an account just gains membership and signs in with its existing
+                password.
+              </>,
+              <>
+                <strong>Plan limits</strong> — exceeding your plan's member or project limit is refused with a message to contact KriJax Software and
+                Development to upgrade.
+              </>,
+            ]}
+          />
+          <Callout tone="info">
+            No workspace yet ("You're not in a workspace yet") or a suspended workspace ("This workspace is suspended") both replace the whole app
+            with a message and a <strong>Sign out</strong> button — ask whoever manages your team's account, or contact KriJax Software and
+            Development.
+          </Callout>
+        </Section>
+
+        <Section id="running" title="4 · Running tests">
           <Steps
             items={[
               <>
@@ -212,7 +248,7 @@ export const Guide = () => {
           </p>
         </Section>
 
-        <Section id="detection" title="4 · How bugs actually get caught">
+        <Section id="detection" title="5 · How bugs actually get caught">
           <p>
             The tool detects <em>deviations from what you recorded</em> plus <em>every error signal the browser emits</em> — four layers, all active on
             every run:
@@ -240,7 +276,7 @@ export const Guide = () => {
           </p>
         </Section>
 
-        <Section id="triage" title="5 · Reading results (triage order)">
+        <Section id="triage" title="6 · Reading results (triage order)">
           <Steps
             items={[
               <>
@@ -267,7 +303,7 @@ export const Guide = () => {
           </Callout>
         </Section>
 
-        <Section id="reports" title="6 · Reports & bug handoff">
+        <Section id="reports" title="7 · Reports & bug handoff">
           <Steps
             items={[
               <>
@@ -294,7 +330,7 @@ export const Guide = () => {
           </p>
         </Section>
 
-        <Section id="kanban" title="7 · Kanban bug tracking">
+        <Section id="kanban" title="8 · Kanban bug tracking">
           <Bullets
             items={[
               <>
@@ -312,7 +348,7 @@ export const Guide = () => {
           />
         </Section>
 
-        <Section id="credentials" title="8 · Testing behind a login">
+        <Section id="credentials" title="9 · Testing behind a login">
           <p>
             Never type real passwords while recording — store the login once as a <strong>credential profile</strong>, then pick it in the Recorder or
             Run dialog.
@@ -335,7 +371,7 @@ export const Guide = () => {
           </Callout>
         </Section>
 
-        <Section id="scheduling" title="9 · Scheduling">
+        <Section id="scheduling" title="10 · Scheduling">
           <Steps
             items={[
               <>
@@ -349,7 +385,7 @@ export const Guide = () => {
           </Callout>
         </Section>
 
-        <Section id="repository" title="10 · Repository — the built-in git client">
+        <Section id="repository" title="11 · Repository — the built-in git client">
           <Steps
             items={[
               <>
@@ -374,7 +410,7 @@ export const Guide = () => {
           </Callout>
         </Section>
 
-        <Section id="steps" title="11 · Step types reference">
+        <Section id="steps" title="12 · Step types reference">
           <GuideTable
             head={['Type', 'What it does', 'Value means']}
             rows={[
@@ -391,7 +427,7 @@ export const Guide = () => {
           <p>Each step has a 10-second default timeout. Suites export and import as plain JSON files.</p>
         </Section>
 
-        <Section id="cli" title="12 · CLI & automation">
+        <Section id="cli" title="13 · CLI & automation">
           <p>
             While the app is open and signed in, a REST API listens on <Mono>127.0.0.1:4317</Mono> (port in Settings). The bundled CLI wraps it:
           </p>
@@ -407,7 +443,7 @@ qaflow report --run-id <id> --format json`}
           </p>
         </Section>
 
-        <Section id="troubleshooting" title="13 · Troubleshooting">
+        <Section id="troubleshooting" title="14 · Troubleshooting">
           <GuideTable
             head={['Symptom', 'Cause & fix']}
             rows={[
@@ -415,9 +451,9 @@ qaflow report --run-id <id> --format json`}
               ['"The app was updated behind this window"', 'A newer build replaced files while this window was open — click Reload app.'],
               ['Suite fails on a selector timeout', 'The UI changed — open Suite Detail and fix or re-record that step.'],
               ['Video link stopped working', 'Signed links expire after 1 hour — reopen the run and copy a fresh one.'],
-              ["Credential profile won't run on my machine", 'Its secret lives on the machine that captured it — capture the session again here (§8).'],
+              ["Credential profile won't run on my machine", 'Its secret lives on the machine that captured it — capture the session again here (§9).'],
               ['"Not signed in" errors', 'Your session ended — sign in again.'],
-              ["Scheduled run didn't happen", 'The app was closed at the scheduled time (§9).'],
+              ["Scheduled run didn't happen", 'The app was closed at the scheduled time (§10).'],
               ['Push/pull fails in Repository', 'Missing/invalid GitHub token, or a merge conflict (needs an external git tool).'],
             ]}
           />

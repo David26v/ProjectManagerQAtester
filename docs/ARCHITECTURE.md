@@ -74,6 +74,68 @@ bin/qaflow.js    CLI — a pure HTTP client of the REST API
   missing `.env`) — the app degrades to local data with a console warning
   instead of white-screening.
 
+## Workspaces (multi-tenant)
+
+Every tenant row (`Project`, `Suite`, `Run`, `Ticket`, `CredentialProfile`,
+`Schedule`) carries a `workspaceId`; one workspace is a company/team, and a
+user belongs to exactly **one** workspace at a time (inviting an email that
+already has a membership elsewhere is refused).
+
+- **`src/engine/roles.js`** — the single source of truth for what a role may
+  do. `ROLES = ['owner', 'admin', 'member']`; `can(role, action)` checks a
+  small `GRANTS` map over management actions only (`invite`,
+  `remove_member`, `change_role`, `edit_workspace`, `delete_workspace`,
+  `delete_project`) — every QA action (record, run, report, tickets,
+  credentials, schedules, repository) is deliberately absent from the map
+  and open to all three roles.
+- **`src/engine/workspaces.js`** — `createWorkspaceService({ prisma,
+  supabase, platformAdminEmails })`. Pure Node: Prisma and the service-role
+  supabase-js client are injected, and it never reads tenant data itself —
+  that's the cloud store's job. Owns membership resolution
+  (`resolveMembership`), invite/provisioning (`inviteMember` creates a
+  Supabase Auth login and returns a one-time temp password when the email
+  had no account, or silently attaches the membership when it already did),
+  role changes and removal (both refuse to touch another owner unless the
+  actor is an owner, and refuse to drop the last owner), rename/delete
+  (owner-only), and plan-limit enforcement (`usage()` compares live
+  member/project counts against the workspace's `maxMembers`/`maxProjects`,
+  throwing a "Contact KriJax to upgrade" error when exceeded). Also owns the
+  KriJax house workspace (`VENDOR_WORKSPACE`, id `ws-krijax`) via
+  `ensureVendorWorkspace`, auto-created/healed the first time a
+  platform-admin email signs in with no membership yet.
+- **`src/main/tenant.js`** — resolves "which workspace is this session in"
+  from the signed-in Supabase user after every auth change. `resolve()`
+  looks up the membership (auto-healing the vendor workspace for platform
+  admins with none), and `getWorkspaceId()` — the function handed to the
+  cloud store as its scope — returns the workspace id only when
+  `workspace.status === 'active'`, and `null` while signed out, without a
+  membership, or when the workspace is suspended. `status()` exposes
+  `{ workspace, role, platformAdmin }` to the renderer for auth state and
+  the gate screens.
+- **Cloud store scoping** — `cloud-store.js`'s internal `ws()` helper calls
+  `getWorkspaceId()` on every single read and write and throws `No active
+  workspace` when it returns null; every query filters or scopes by that id
+  (`where: { workspaceId: ws() }`, or `id + workspaceId` together on
+  lookups by id). This is the last line of defense — the renderer's gate
+  screens normally prevent a scoped call from firing in the first place,
+  but the store does not trust the UI for isolation.
+- **Compound `Ticket` key** — tickets are the one model without a surrogate
+  primary key: `@@id([workspaceId, id])` in `prisma/schema.prisma`. Ticket
+  numbers (`BUG-1`, `BUG-2`, …) are per-workspace, driven by a
+  `TicketCounter` row keyed on `workspaceId` (`@unique`), so two workspaces
+  each mint their own `BUG-1` without colliding — the compound id is what
+  makes that safe.
+- **Gate screens (renderer)** — `WorkspaceGate.jsx` renders instead of the
+  app shell in two cases: `kind="none"` ("You're not in a workspace yet",
+  signed in but no membership) and `kind="suspended"` ("This workspace is
+  suspended"); both offer only **Sign out**. `App.jsx` picks between the
+  normal shell, the Login screen, and this gate based on `auth:status`'s
+  `workspace`/`role` payload.
+- **Seeding** — `npm run db:seed-workspaces` (idempotent) creates the house
+  workspace, grants owner membership to every `ASTREUS_PLATFORM_ADMINS`
+  email, and syncs each workspace's `TicketCounter` to its current max
+  ticket number.
+
 ## Auth
 
 - **auth.js (main)** — Supabase Auth with the *publishable* key only (the
@@ -204,8 +266,8 @@ API is the only door. The app must be running and signed in.
 ## Testing
 
 `npm test` → `node --test test/**/*.test.js` (store, runner, recorder,
-exporters, api, schedule, git, cloud-db, cloud-store, cloud-media — 71
-tests).
+exporters, api, schedule, git, cloud-db, cloud-store, cloud-media, roles,
+workspaces, security, format — 93 tests).
 Local tests use temp dirs and a fixture web server; cloud integration tests
 run live against the real `astreus` schema/bucket with `astreus-test-`
 prefixed rows (cleaned in `finally`) and skip entirely when `DATABASE_URL`
@@ -214,6 +276,8 @@ is unset, so the suite stays green offline. `npm run smoke` (build +
 
 ## Deliberately out of scope
 
-RLS/per-user permissions, offline mode (beyond the local-store fallback),
+Postgres RLS (isolation is enforced in application code, at the cloud-store
+scope function), offline mode (beyond the local-store fallback),
 self-signup, magic links, storage pruning UI, v1 local-data migration, Jira
-REST push, repo-connection mode, PIN lock, role enforcement.
+REST push, repo-connection mode, PIN lock. A vendor-facing web billing
+portal for workspace plans is a separate future sub-project.
