@@ -126,6 +126,23 @@ function registerIpc({
     });
   }
 
+  // "Must be in an active workspace" / "must have this permission in it" —
+  // moved up here (rather than down by the `workspace:*` handlers that use
+  // them most) so this file reads top-down: `projects:remove` below needs
+  // `requireCan` too, well before the workspace section.
+  const requireWorkspace = () => {
+    if (!tenant || !workspaces) throw new Error('Workspaces are unavailable in local mode');
+    const t = tenant.get();
+    if (!t.workspaceId) throw new Error('You are not a member of a workspace');
+    if (!tenant.getWorkspaceId()) throw new Error('This workspace is suspended — contact KriJax Software and Development.');
+    return t;
+  };
+  const requireCan = (action) => {
+    const t = requireWorkspace();
+    if (!can(t.role, action)) throw new Error(`Your role (${t.role}) cannot ${action.replace('_', ' ')}.`);
+    return t;
+  };
+
   // Ticket reporter identity: the signed-in user's email, preferring
   // `user_metadata.name` when Supabase Auth has one set. Falls back to the
   // exporter's own 'QA' default (via `undefined`) when `auth` isn't wired at
@@ -149,10 +166,26 @@ function registerIpc({
   // case too (see `handle()` above). `await auth.ready` makes the boot-time
   // answer final: without it, a status() call racing session restore would
   // read as "logged out" for a user whose auto-login is about to succeed.
-  const authPayload = () => ({ ...auth.status(), configured: true, ...(tenant ? tenant.status() : { workspace: null, role: null, platformAdmin: false }) });
+  const authPayload = () => ({
+    ...auth.status(),
+    configured: true,
+    workspacesConfigured: Boolean(workspaces),
+    ...(tenant ? tenant.status() : { workspace: null, role: null, platformAdmin: false }),
+  });
 
   handle('auth:status', async () => {
-    if (!auth) return { loggedIn: false, email: null, name: null, configured: false, workspace: null, role: null, platformAdmin: false };
+    if (!auth) {
+      return {
+        loggedIn: false,
+        email: null,
+        name: null,
+        configured: false,
+        workspacesConfigured: false,
+        workspace: null,
+        role: null,
+        platformAdmin: false,
+      };
+    }
     await auth.ready;
     if (tenant) await tenant.resolve();
     return authPayload();
@@ -169,10 +202,17 @@ function registerIpc({
     if (tenant) await tenant.resolve();
     return true;
   });
+  // Pushes fresh auth/workspace state to the renderer the same way the auth
+  // listener does — used there, and after `workspace:rename` /
+  // `workspace:delete` so the sidebar chip, Settings, and the workspace gate
+  // pick up the change immediately instead of waiting for the next
+  // `auth:status` poll.
+  const pushAuthStatus = () => (notifyAuthStatus || ((s) => send('auth:changed', s)))(authPayload());
+
   if (auth) {
     auth.onChange(async () => {
       if (tenant) await tenant.resolve();
-      (notifyAuthStatus || ((s) => send('auth:changed', s)))(authPayload());
+      pushAuthStatus();
     });
   }
 
@@ -640,19 +680,6 @@ function registerIpc({
   handle('settings:save', (patch) => store.saveSettings(patch));
 
   // ---- workspace ----
-  const requireWorkspace = () => {
-    if (!tenant || !workspaces) throw new Error('Workspaces are unavailable in local mode');
-    const t = tenant.get();
-    if (!t.workspaceId) throw new Error('You are not a member of a workspace');
-    if (!tenant.getWorkspaceId()) throw new Error('This workspace is suspended — contact KriJax Software and Development.');
-    return t;
-  };
-  const requireCan = (action) => {
-    const t = requireWorkspace();
-    if (!can(t.role, action)) throw new Error(`Your role (${t.role}) cannot ${action.replace('_', ' ')}.`);
-    return t;
-  };
-
   handle('workspace:current', async () => {
     const t = requireWorkspace();
     return { workspace: t.workspace, role: t.role, platformAdmin: t.platformAdmin, usage: await workspaces.usage(t.workspaceId) };
@@ -674,23 +701,36 @@ function registerIpc({
     const t = requireCan('edit_workspace');
     const ws = await workspaces.renameWorkspace(t.workspaceId, name, t.role);
     await tenant.resolve();
+    pushAuthStatus();
     return ws;
   });
   handle('workspace:delete', async () => {
     const t = requireCan('delete_workspace');
     await workspaces.deleteWorkspace(t.workspaceId, t.role);
     await tenant.resolve();
+    pushAuthStatus();
     return true;
   });
 
   // ---- app ----
   handle('app:version', () => app.getVersion());
-  handle('app:mediaUrl', (runId, relPath) => {
+  handle('app:mediaUrl', async (runId, relPath) => {
     // Cloud runs (Task 3) store media in Supabase Storage — `relPath` shows
     // up here as the `storage:<runId>/<filename>` sentinel the cloud store
     // wrote into the report. Legacy/local runs keep the v1 protocol.
     if (typeof relPath === 'string' && relPath.startsWith('storage:')) {
       if (!supabase) throw new Error('Cloud storage is not configured');
+      // Scope check: the run must be readable in the caller's workspace AND
+      // the path must be one this run actually captured — the media bucket
+      // itself is flat and workspace-agnostic, so this is the only thing
+      // standing between a guessed runId and another tenant's evidence.
+      const run = await store.getRun(runId);
+      if (!run) throw new Error('Not found in this workspace');
+      const owned =
+        (run.capturedMedia || []).some((m) => m.path === relPath) ||
+        run.videoPath === relPath ||
+        (run.steps || []).some((s) => s.screenshot === relPath);
+      if (!owned) throw new Error('Not found in this workspace');
       return signedMediaUrl(supabase, relPath.slice('storage:'.length));
     }
     return `qaflow-media://${runId}/${relPath}`;

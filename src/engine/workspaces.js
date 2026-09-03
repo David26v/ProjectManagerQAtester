@@ -7,6 +7,7 @@
 
 const crypto = require('node:crypto');
 const { can, ROLES } = require('./roles.js');
+const { BUCKET } = require('./cloud/media.js');
 
 const VENDOR_WORKSPACE = { id: 'ws-krijax', name: 'KriJax', slug: 'krijax', plan: 'vendor' };
 
@@ -197,9 +198,56 @@ const createWorkspaceService = ({ prisma, supabase, platformAdminEmails = [] }) 
     return updateWorkspace(id, { name: name.trim() });
   };
 
+  // Storage paths a run report can reference — `capturedMedia[].path`,
+  // `videoPath`, and `steps[].screenshot` — narrowed to the ones actually
+  // uploaded to the shared media bucket (`storage:<runId>/<filename>`;
+  // see cloud/media.js `uploadRunMedia`) and stripped of that prefix so
+  // they're ready for a `storage.remove()` call.
+  const storagePathsFromReport = (report) => {
+    const paths = [];
+    for (const m of (report && report.capturedMedia) || []) {
+      if (typeof m.path === 'string' && m.path.startsWith('storage:')) paths.push(m.path);
+    }
+    if (typeof (report && report.videoPath) === 'string' && report.videoPath.startsWith('storage:')) {
+      paths.push(report.videoPath);
+    }
+    for (const s of (report && report.steps) || []) {
+      if (typeof s.screenshot === 'string' && s.screenshot.startsWith('storage:')) paths.push(s.screenshot);
+    }
+    return paths.map((p) => p.slice('storage:'.length));
+  };
+
+  // Best-effort removal of a deleted workspace's run media from the shared
+  // bucket. Never throws — a storage hiccup here must not undo the row
+  // deletion that already committed; it's logged instead so it can be
+  // cleaned up by hand if needed.
+  const purgeWorkspaceMedia = async (keys) => {
+    if (!supabase || keys.length === 0) return;
+    for (let i = 0; i < keys.length; i += 100) {
+      const chunk = keys.slice(i, i + 100);
+      try {
+        const { error } = await supabase.storage.from(BUCKET).remove(chunk);
+        if (error) throw error;
+      } catch (e) {
+        console.warn(`[qaflow] failed to purge ${chunk.length} media object(s) for a deleted workspace: ${e.message}`);
+      }
+    }
+  };
+
   const deleteWorkspace = async (id, actorRole) => {
     requireCan(actorRole, 'delete_workspace');
     if (id === VENDOR_WORKSPACE.id) throw new Error('The KriJax workspace cannot be deleted.');
+
+    let mediaKeys = [];
+    if (supabase) {
+      try {
+        const runs = await prisma.run.findMany({ where: { workspaceId: id }, select: { report: true } });
+        mediaKeys = runs.flatMap((r) => storagePathsFromReport(r.report));
+      } catch (e) {
+        console.warn(`[qaflow] failed to collect run media for a deleted workspace: ${e.message}`);
+      }
+    }
+
     await prisma.$transaction([
       prisma.run.deleteMany({ where: { workspaceId: id } }),
       prisma.schedule.deleteMany({ where: { workspaceId: id } }),
@@ -210,6 +258,8 @@ const createWorkspaceService = ({ prisma, supabase, platformAdminEmails = [] }) 
       prisma.credentialProfile.deleteMany({ where: { workspaceId: id } }),
       prisma.workspace.deleteMany({ where: { id } }), // members + invoices cascade
     ]);
+
+    await purgeWorkspaceMedia(mediaKeys);
     return true;
   };
 

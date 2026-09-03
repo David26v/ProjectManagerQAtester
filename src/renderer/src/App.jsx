@@ -408,10 +408,15 @@ const AuthGate = () => {
   if (status.configured && !status.loggedIn) {
     return <Login onLoggedIn={refresh} />;
   }
-  if (status.configured && !status.workspace) {
+  // Cloud auth without a cloud database (Prisma/Supabase admin unreachable
+  // or unconfigured) means the app is running in local-data mode — there
+  // are no workspaces to belong to, so these gates must not apply, or a
+  // half-configured cloud env would lock a working local fallback behind
+  // an unreachable "not in a workspace yet" screen forever.
+  if (status.configured && status.workspacesConfigured && !status.workspace) {
     return <WorkspaceGate status={status} kind="none" />;
   }
-  if (status.configured && status.workspace.status === 'suspended') {
+  if (status.configured && status.workspacesConfigured && status.workspace.status === 'suspended') {
     return <WorkspaceGate status={status} kind="suspended" />;
   }
   return <AppShell authStatus={status.configured ? status : null} />;

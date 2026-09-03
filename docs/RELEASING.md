@@ -107,6 +107,32 @@ debug the build locally before trusting CI with it.
    see the update — re-run `npm run release` rather than uploading assets by
    hand.
 
+## Upgrading to 2.2 (multi-tenant)
+
+2.2 introduces Workspaces (multi-tenant data) and changes `Ticket`'s primary
+key to the compound `@@id([workspaceId, id])`. This cutover needs a few
+manual steps, in order, that a routine release doesn't:
+
+1. **Back up the `astreus` schema first.** The primary-key change and the
+   seed step below both touch existing rows — take a schema backup/snapshot
+   before running anything so this is reversible if something goes wrong.
+2. **Run `npm run db:push`.** It will prompt for confirmation because
+   `Ticket`'s primary key is changing to the compound
+   `@@id([workspaceId, id])` — review the prompt before accepting.
+3. **Run `npm run db:seed-workspaces` with `ASTREUS_PLATFORM_ADMINS` set.**
+   This creates the `ws-krijax` house workspace, grants each platform admin
+   an owner membership in it, and syncs the `TicketCounter` sequence. It is
+   idempotent — safe to re-run.
+4. **Existing cloud users who are NOT platform admins will land on the
+   "You're not in a workspace yet" screen** until an owner invites them from
+   the Workspace screen. Their data is intact under `ws-krijax` — this is
+   an access gate, not data loss.
+5. **Push the release promptly after the migration.** Installed 2.1 clients
+   will error on ticket queries during the auto-update window, because the
+   primary-key change is not backward compatible with the 2.1 query shape —
+   minimize that window rather than leaving the migration applied with the
+   old client still in the wild.
+
 ## Notes
 
 - **SmartScreen on first install.** The installer isn't code-signed

@@ -102,6 +102,19 @@ test('workspaces: provisioning, membership claim, invites, limits, role guards',
 
     await svc.deleteWorkspace(other.workspace.id, 'owner');
 
+    // deleteWorkspace's media purge must not require a supabase client —
+    // guard on it, don't throw. Provision the workspace with the real
+    // (supabase-backed) service — creating a login needs supabase — then
+    // delete it through a second service instance built with
+    // `supabase: null`, proving the media-collection path tolerates that.
+    const noMediaOwnerEmail = `${PREFIX}${rand}-nomedia-owner@example.invalid`;
+    const noMediaSlug = `${PREFIX}${rand}-nomedia`;
+    const noMediaWs = await svc.createWorkspace({ name: 'No Media Co', slug: noMediaSlug, plan: 'free', ownerEmail: noMediaOwnerEmail });
+    createdUserIds.push(noMediaWs.owner.userId);
+    const localSvc = createWorkspaceService({ prisma, supabase: null, platformAdminEmails: ['admin@krijax.com'] });
+    await localSvc.deleteWorkspace(noMediaWs.workspace.id, 'owner');
+    assert.equal(await localSvc.getWorkspace(noMediaWs.workspace.id), null);
+
     // rename + delete guards
     assert.equal((await svc.renameWorkspace(created.workspace.id, 'Acme Renamed', 'owner')).name, 'Acme Renamed');
     await assert.rejects(() => svc.deleteWorkspace(created.workspace.id, 'admin'), /permission/i);

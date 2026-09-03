@@ -139,7 +139,7 @@ The same module exposes the **provisioning** primitives the portal's edge functi
 
 **Creating a login for an invited email:** `supabase.auth.admin.createUser({ email, password: <generated 16-char>, email_confirm: true })` with the existing service-role client. The temporary password is **returned once** for hand-off and never stored. "Already registered" → no password; the existing account claims the membership at first login. Emails lower-cased everywhere.
 
-`src/engine/roles.js`: `can(role, action)` for `invite`, `remove_member`, `change_role`, `edit_workspace`, `delete_workspace`, `delete_project`. Owner: all. Admin: all but `delete_workspace`. Member: none of these (all QA actions remain open to members).
+`src/engine/roles.js`: `can(role, action)` for `invite`, `remove_member`, `change_role`, `edit_workspace`, `delete_workspace`, `delete_project`. Owner: all. Admin: all but `delete_workspace` and `edit_workspace` (renaming a workspace is owner-only). Member: none of these (all QA actions remain open to members).
 
 ### 1.6 IPC + renderer
 

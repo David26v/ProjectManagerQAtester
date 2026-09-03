@@ -315,7 +315,6 @@ app.whenReady().then(async () => {
   let schedulerStarted = false;
   function startSchedulerOnce() {
     if (schedulerStarted) return;
-    schedulerStarted = true;
     try {
       const scheduler = createScheduler({
         store,
@@ -327,6 +326,11 @@ app.whenReady().then(async () => {
         },
       });
       scheduler.start();
+      // Only latch the flag once start() actually succeeds — a transient
+      // first failure (e.g. a corrupt schedules.json that resolves itself
+      // on the next resolve) must not permanently disable the scheduler for
+      // the rest of the process's life.
+      schedulerStarted = true;
     } catch (e) {
       console.warn(`[qaflow] scheduler failed to start: ${e.message}`);
     }
