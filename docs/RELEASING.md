@@ -1,17 +1,48 @@
 # KriJaxAutomation — Releasing
 
-KriJaxAutomation ships auto-updates through `electron-updater` reading GitHub Releases
-on `David26v/ProjectManagerQAtester` (see the `publish` block in
-`package.json`). Installed copies check for a new release on boot (after a
-short delay) and every 4 hours, download automatically, and prompt the user
-to restart once the download finishes.
+**As of v2.2.0 the update channel is Supabase Storage, not GitHub Releases.**
+`electron-updater` reads the public bucket `krijax-releases` in the Supabase
+project (see the `publish` block in `package.json`). Installed copies check
+for a new release on boot (after a short delay) and every 4 hours, download
+automatically, and prompt the user to restart once the download finishes.
 
-There are two ways to cut a release:
+Update feed: `https://<project>.supabase.co/storage/v1/object/public/krijax-releases/latest.yml`
 
-- **§1 — from GitHub, for QA.** No dev machine, no terminal. This is the
-  normal way to ship a release.
-- **§2 — from a dev machine.** A local fallback for when Actions is down or
-  you need to debug the build itself.
+## 0. Cut a release to Supabase Storage (current method)
+
+From a dev machine with `.env` present:
+
+```bash
+npm version <new-version> --no-git-tag-version   # or edit package.json
+npm run dist                                     # builds release/*.exe + latest.yml
+npm run publish:release                          # uploads to the krijax-releases bucket
+```
+
+`scripts/publish-release.mjs` creates the bucket if missing (public, which is
+required — `electron-updater` fetches with no auth headers), then uploads the
+installer, its `.blockmap`, and `latest.yml` with `upsert`, so re-running is
+safe. Verify afterwards by fetching the feed URL above in a browser; it must
+return the new `version:` with no login.
+
+**The bucket is public.** Anyone with the URL can download the installer.
+That is how the updater works and is normal for desktop apps — the app itself
+is useless without a workspace login. Do not put anything else in this bucket.
+
+**One-time migration for existing installs.** Copies installed before v2.2.0
+have an `app-update.yml` baked in that points at GitHub Releases, so they will
+NOT see Supabase releases. Each of those machines must install v2.2.0 once by
+hand (send them the `.exe`); from then on their updates flow from Supabase
+automatically.
+
+### Legacy: GitHub Releases (§1 and §2 below)
+
+The GitHub Actions pipeline and the `David26v/ProjectManagerQAtester`
+release flow described in the next two sections are the **previous** channel.
+They still build a working installer, but installed v2.2.0+ copies no longer
+look there. Keep them for reference, or as a fallback if Supabase Storage is
+unavailable — if you use them, remember to point `package.json`'s `publish`
+block back at the `github` provider before building, or the packaged app will
+still expect Supabase.
 
 ## 1. Deploy from GitHub (for QA)
 

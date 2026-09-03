@@ -13,6 +13,7 @@
     "dist": "prisma generate && npm run build:renderer && electron-builder --win --publish never",
     "release": "prisma generate && npm run build:renderer && electron-builder --win --publish always",
     "db:push": "node scripts/db-push.mjs",
+    "publish:release": "node scripts/publish-release.mjs",
     "db:seed-workspaces": "node scripts/seed-workspaces.mjs"
   },
   "build": {
@@ -53,10 +54,9 @@
     },
     "publish": [
       {
-        "provider": "github",
-        "owner": "David26v",
-        "repo": "ProjectManagerQAtester",
-        "releaseType": "release"
+        "provider": "generic",
+        "url": "https://xordacdjmgqeesubncnk.supabase.co/storage/v1/object/public/krijax-releases",
+        "channel": "latest"
       }
     ]
   },
