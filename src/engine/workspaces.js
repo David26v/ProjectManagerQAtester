@@ -6,7 +6,7 @@
 // tenant data; that is the cloud store's job.
 
 const crypto = require('node:crypto');
-const { can } = require('./roles.js');
+const { can, ROLES } = require('./roles.js');
 
 const VENDOR_WORKSPACE = { id: 'ws-krijax', name: 'KriJax', slug: 'krijax', plan: 'vendor' };
 
@@ -96,9 +96,9 @@ const createWorkspaceService = ({ prisma, supabase, platformAdminEmails = [] }) 
 
   const resolveMembership = async ({ userId, email }) => {
     const normalized = normalizeEmail(email);
-    let member = userId ? await prisma.workspaceMember.findFirst({ where: { userId } }) : null;
+    let member = userId ? await prisma.workspaceMember.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } }) : null;
     if (!member && normalized) {
-      const pending = await prisma.workspaceMember.findFirst({ where: { email: normalized } });
+      const pending = await prisma.workspaceMember.findFirst({ where: { email: normalized }, orderBy: { createdAt: 'asc' } });
       if (pending) {
         member = await prisma.workspaceMember.update({
           where: { id: pending.id },
@@ -129,6 +129,8 @@ const createWorkspaceService = ({ prisma, supabase, platformAdminEmails = [] }) 
     const cleanSlug = slugify(slug || name);
     const id = `ws-${cleanSlug}`;
     if (await prisma.workspace.findUnique({ where: { id } })) throw new Error(`A workspace with slug "${cleanSlug}" already exists`);
+    const clash = await prisma.workspaceMember.findFirst({ where: { email, workspaceId: { not: id } } });
+    if (clash) throw new Error('This email already belongs to another workspace.');
     const login = await ensureLogin(email);
     const now = new Date();
     const workspace = await prisma.workspace.create({
@@ -147,9 +149,14 @@ const createWorkspaceService = ({ prisma, supabase, platformAdminEmails = [] }) 
 
   const inviteMember = async (workspaceId, { email, role = 'member' }, actorRole) => {
     requireCan(actorRole, 'invite');
+    if (!ROLES.includes(role)) throw new Error(`Unknown role "${role}".`);
     if (role === 'owner' && actorRole !== 'owner') throw new Error('Only an owner can grant the owner role.');
     const normalized = normalizeEmail(email);
     if (!normalized) throw new Error('Email is required');
+    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+    if (!workspace) throw new Error('Workspace not found');
+    const clash = await prisma.workspaceMember.findFirst({ where: { email: normalized, workspaceId: { not: workspaceId } } });
+    if (clash) throw new Error('This email already belongs to another workspace.');
     const current = await usage(workspaceId);
     if (current.maxMembers != null && current.members >= current.maxMembers) {
       throw new Error(`Member limit reached for your plan (${current.maxMembers}). Contact KriJax to upgrade.`);
@@ -163,6 +170,7 @@ const createWorkspaceService = ({ prisma, supabase, platformAdminEmails = [] }) 
 
   const changeRole = async (workspaceId, memberId, role, actorRole) => {
     requireCan(actorRole, 'change_role');
+    if (!ROLES.includes(role)) throw new Error(`Unknown role "${role}".`);
     if (role === 'owner' && actorRole !== 'owner') throw new Error('Only an owner can grant the owner role.');
     const target = await prisma.workspaceMember.findFirst({ where: { id: memberId, workspaceId } });
     if (!target) throw new Error('Member not found');

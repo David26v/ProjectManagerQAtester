@@ -74,6 +74,32 @@ test('workspaces: provisioning, membership claim, invites, limits, role guards',
     assert.equal(vendor.workspace.id, 'ws-krijax');
     assert.equal(vendor.member.role, 'owner');
 
+    // one-workspace-per-user: inviting an email already tied to another workspace is refused
+    const otherOwnerEmail = `${PREFIX}${rand}-other-owner@example.invalid`;
+    const otherSlug = `${PREFIX}${rand}-other`;
+    const other = await svc.createWorkspace({ name: 'Other Co', slug: otherSlug, plan: 'free', ownerEmail: otherOwnerEmail });
+    createdUserIds.push(other.owner.userId);
+    await assert.rejects(
+      () => svc.inviteMember(created.workspace.id, { email: otherOwnerEmail, role: 'member' }, 'owner'),
+      /already belongs to another workspace/
+    );
+
+    // invite into a non-existent workspace: rejects and provisions no login
+    const orphanEmail = `${PREFIX}${rand}-orphan@example.invalid`;
+    await assert.rejects(() => svc.inviteMember('ws-does-not-exist', { email: orphanEmail, role: 'member' }, 'owner'), /Workspace not found/);
+    const laterInvite = await svc.inviteMember(other.workspace.id, { email: orphanEmail, role: 'member' }, 'owner');
+    assert.ok(laterInvite.tempPassword, 'no account was provisioned by the failed invite into the bad workspace id');
+    createdUserIds.push(laterInvite.member.userId);
+
+    // unknown role rejects
+    await assert.rejects(
+      () => svc.inviteMember(other.workspace.id, { email: `${PREFIX}${rand}-badrole@example.invalid`, role: 'superadmin' }, 'owner'),
+      /Unknown role/
+    );
+    await assert.rejects(() => svc.changeRole(other.workspace.id, other.owner.id, 'superadmin', 'owner'), /Unknown role/);
+
+    await svc.deleteWorkspace(other.workspace.id, 'owner');
+
     // rename + delete guards
     assert.equal((await svc.renameWorkspace(created.workspace.id, 'Acme Renamed', 'owner')).name, 'Acme Renamed');
     await assert.rejects(() => svc.deleteWorkspace(created.workspace.id, 'admin'), /permission/i);
