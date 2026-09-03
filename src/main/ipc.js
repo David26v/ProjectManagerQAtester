@@ -23,6 +23,7 @@ const { generateTicketText, ticketFromRun } = require('../engine/exporters/ticke
 const { createBundle } = require('../engine/exporters/bundle.js');
 const { BUCKET, signedMediaUrl } = require('../engine/cloud/media.js');
 const gitEngine = require('../engine/git.js');
+const { can } = require('../engine/roles.js');
 
 // Mirrors `resolveEnvironment` in engine/api.js (kept local — that function
 // isn't exported, and it's a small enough helper that duplicating it here
@@ -92,6 +93,8 @@ function registerIpc({
   getBrowserStatus = () => null,
   supabase = null,
   auth = null,
+  tenant = null,
+  workspaces = null,
   // Device-local data root (`userData/qaflow-data`) — the repo handlers use
   // it for per-project working copies (`repos/<projectId>`) and the
   // encrypted GitHub token. Optional so tests that register IPC without it
@@ -146,22 +149,31 @@ function registerIpc({
   // case too (see `handle()` above). `await auth.ready` makes the boot-time
   // answer final: without it, a status() call racing session restore would
   // read as "logged out" for a user whose auto-login is about to succeed.
+  const authPayload = () => ({ ...auth.status(), configured: true, ...(tenant ? tenant.status() : { workspace: null, role: null, platformAdmin: false }) });
+
   handle('auth:status', async () => {
-    if (!auth) return { loggedIn: false, email: null, name: null, configured: false };
+    if (!auth) return { loggedIn: false, email: null, name: null, configured: false, workspace: null, role: null, platformAdmin: false };
     await auth.ready;
-    return { ...auth.status(), configured: true };
+    if (tenant) await tenant.resolve();
+    return authPayload();
   });
   handle('auth:login', async ({ email, password } = {}) => {
     if (!auth) throw new Error('Cloud auth is not configured');
-    return auth.login(email, password);
+    await auth.login(email, password);
+    if (tenant) await tenant.resolve();
+    return authPayload();
   });
   handle('auth:logout', async () => {
     if (!auth) throw new Error('Cloud auth is not configured');
     await auth.logout();
+    if (tenant) await tenant.resolve();
     return true;
   });
   if (auth) {
-    auth.onChange((status) => (notifyAuthStatus || ((s) => send('auth:changed', s)))(status));
+    auth.onChange(async () => {
+      if (tenant) await tenant.resolve();
+      (notifyAuthStatus || ((s) => send('auth:changed', s)))(authPayload());
+    });
   }
 
   // ---- cloud-media export support ----
@@ -227,6 +239,7 @@ function registerIpc({
   handle('projects:get', (id) => store.getProject(id));
   handle('projects:save', (project) => store.saveProject(project));
   handle('projects:remove', async (id) => {
+    if (tenant && workspaces) requireCan('delete_project');
     await store.deleteProject(id);
     return true;
   });
@@ -625,6 +638,49 @@ function registerIpc({
   // ---- settings ----
   handle('settings:get', () => store.getSettings());
   handle('settings:save', (patch) => store.saveSettings(patch));
+
+  // ---- workspace ----
+  const requireWorkspace = () => {
+    if (!tenant || !workspaces) throw new Error('Workspaces are unavailable in local mode');
+    const t = tenant.get();
+    if (!t.workspaceId) throw new Error('You are not a member of a workspace');
+    return t;
+  };
+  const requireCan = (action) => {
+    const t = requireWorkspace();
+    if (!can(t.role, action)) throw new Error(`Your role (${t.role}) cannot ${action.replace('_', ' ')}.`);
+    return t;
+  };
+
+  handle('workspace:current', async () => {
+    const t = requireWorkspace();
+    return { workspace: t.workspace, role: t.role, platformAdmin: t.platformAdmin, usage: await workspaces.usage(t.workspaceId) };
+  });
+  handle('workspace:members:list', () => workspaces.listMembers(requireWorkspace().workspaceId));
+  handle('workspace:members:invite', ({ email, role } = {}) => {
+    const t = requireCan('invite');
+    return workspaces.inviteMember(t.workspaceId, { email, role }, t.role);
+  });
+  handle('workspace:members:changeRole', ({ memberId, role } = {}) => {
+    const t = requireCan('change_role');
+    return workspaces.changeRole(t.workspaceId, memberId, role, t.role);
+  });
+  handle('workspace:members:remove', ({ memberId } = {}) => {
+    const t = requireCan('remove_member');
+    return workspaces.removeMember(t.workspaceId, memberId, t.role);
+  });
+  handle('workspace:rename', async ({ name } = {}) => {
+    const t = requireCan('edit_workspace');
+    const ws = await workspaces.renameWorkspace(t.workspaceId, name, t.role);
+    await tenant.resolve();
+    return ws;
+  });
+  handle('workspace:delete', async () => {
+    const t = requireCan('delete_workspace');
+    await workspaces.deleteWorkspace(t.workspaceId, t.role);
+    await tenant.resolve();
+    return true;
+  });
 
   // ---- app ----
   handle('app:version', () => app.getVersion());

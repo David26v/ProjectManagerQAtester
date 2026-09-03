@@ -18,10 +18,12 @@ const { app, BrowserWindow, protocol } = require('electron');
 
 const { createStore } = require('../engine/store.js');
 const { createCloudStore } = require('../engine/cloud-store.js');
+const { createWorkspaceService } = require('../engine/workspaces.js');
 const { createApi } = require('../engine/api.js');
 const { runSuite } = require('../engine/runner.js');
 const { registerIpc } = require('./ipc.js');
 const { createAuth } = require('./auth.js');
+const { createTenant } = require('./tenant.js');
 const { createScheduler } = require('./scheduler.js');
 const { createBrowserBootstrap } = require('./browser-bootstrap.js');
 const { createUpdates } = require('./updates.js');
@@ -67,10 +69,23 @@ try {
   console.warn(`[qaflow] Supabase admin client unavailable: ${e.message}`);
 }
 
+let workspaces = null;
+let tenant = null; // assigned in whenReady once auth exists
+
 let store = localStore;
 if (prisma && supabaseAdmin) {
   try {
-    store = createCloudStore({ prisma, supabase: supabaseAdmin, localStore });
+    workspaces = createWorkspaceService({
+      prisma,
+      supabase: supabaseAdmin,
+      platformAdminEmails: (process.env.ASTREUS_PLATFORM_ADMINS || '').split(',').map((e) => e.trim()).filter(Boolean),
+    });
+    store = createCloudStore({
+      prisma,
+      supabase: supabaseAdmin,
+      localStore,
+      getWorkspaceId: () => (tenant ? tenant.getWorkspaceId() : null),
+    });
   } catch (e) {
     console.warn(`[qaflow] cloud store unavailable — running on local data: ${e.message}`);
     store = localStore;
@@ -237,6 +252,7 @@ app.whenReady().then(async () => {
   // module scope (see the comment above `let auth = null`).
   try {
     auth = createAuth({ userDataDir });
+    tenant = createTenant({ auth, workspaces });
   } catch (e) {
     console.warn(`[qaflow] auth unavailable — IPC will run ungated: ${e.message}`);
   }
@@ -250,6 +266,8 @@ app.whenReady().then(async () => {
     getBrowserStatus: () => lastBrowserStatus,
     supabase: supabaseAdmin,
     auth,
+    tenant,
+    workspaces,
     notifyAuthStatus: sendAuthStatus,
     baseDir,
   });
@@ -291,10 +309,11 @@ app.whenReady().then(async () => {
   // the first `auth:changed` with `loggedIn: true`.
   if (auth) {
     auth.ready.then(() => {
-      if (auth.getUser()) bootApiOnce();
+      if (auth.getUser() && tenant.getWorkspaceId()) bootApiOnce();
     });
-    auth.onChange((status) => {
-      if (status.loggedIn) bootApiOnce();
+    auth.onChange(async () => {
+      await tenant.resolve();
+      if (tenant.getWorkspaceId()) bootApiOnce();
     });
   } else {
     bootApiOnce();
