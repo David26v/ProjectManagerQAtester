@@ -302,6 +302,36 @@ app.whenReady().then(async () => {
     });
   }
 
+  // Scheduler is best-effort — a failure here (e.g. a corrupt
+  // schedules.json, or an unreachable cloud store) must not take down the
+  // app; `--smoke` already exits via the `did-finish-load` listener above
+  // regardless of this. In local/no-auth mode there's no workspace gate to
+  // wait for, so it starts immediately below. When auth IS wired, its
+  // one-shot `sweepLapsed()` would race tenant resolution and hit the
+  // workspace-scoped store before any workspace is active — so it is
+  // instead started the first time a workspace resolves (alongside
+  // `bootApiOnce()`), guarded by `schedulerStarted` so repeated auth
+  // changes don't start it twice.
+  let schedulerStarted = false;
+  function startSchedulerOnce() {
+    if (schedulerStarted) return;
+    schedulerStarted = true;
+    try {
+      const scheduler = createScheduler({
+        store,
+        executeRun,
+        notify: (schedule, status) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('schedules:fired', { schedule, status });
+          }
+        },
+      });
+      scheduler.start();
+    } catch (e) {
+      console.warn(`[qaflow] scheduler failed to start: ${e.message}`);
+    }
+  }
+
   // API boot: if auth isn't wired at all (no env — smoke, or a dev checkout
   // with no `.env`), there's no login surface to gate behind, so boot
   // immediately like before Task 4. If auth IS wired, boot once a session is
@@ -309,36 +339,24 @@ app.whenReady().then(async () => {
   // the first `auth:changed` with `loggedIn: true`.
   if (auth) {
     auth.ready.then(() => {
-      if (auth.getUser() && tenant.getWorkspaceId()) bootApiOnce();
+      if (auth.getUser() && tenant.getWorkspaceId()) {
+        bootApiOnce();
+        startSchedulerOnce();
+      }
     });
     auth.onChange(async () => {
       await tenant.resolve();
-      if (tenant.getWorkspaceId()) bootApiOnce();
+      if (tenant.getWorkspaceId()) {
+        bootApiOnce();
+        startSchedulerOnce();
+      }
     });
   } else {
     bootApiOnce();
+    startSchedulerOnce();
   }
 
   await bootMediaBucket();
-
-  // Scheduler is best-effort — a failure here (e.g. a corrupt
-  // schedules.json, or an unreachable cloud store) must not take down the
-  // app; `--smoke` already exits via the `did-finish-load` listener above
-  // regardless of this.
-  try {
-    const scheduler = createScheduler({
-      store,
-      executeRun,
-      notify: (schedule, status) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('schedules:fired', { schedule, status });
-        }
-      },
-    });
-    scheduler.start();
-  } catch (e) {
-    console.warn(`[qaflow] scheduler failed to start: ${e.message}`);
-  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();

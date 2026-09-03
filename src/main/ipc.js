@@ -644,6 +644,7 @@ function registerIpc({
     if (!tenant || !workspaces) throw new Error('Workspaces are unavailable in local mode');
     const t = tenant.get();
     if (!t.workspaceId) throw new Error('You are not a member of a workspace');
+    if (!tenant.getWorkspaceId()) throw new Error('This workspace is suspended — contact KriJax Software and Development.');
     return t;
   };
   const requireCan = (action) => {
