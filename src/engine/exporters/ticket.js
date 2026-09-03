@@ -39,7 +39,7 @@ function attachmentNames(run) {
   return media.map((m) => m.path.split(/[\\/]/).pop());
 }
 
-function generateTicketText(run, project, { severity } = {}) {
+function generateTicketText(run, project, { severity, reporter } = {}) {
   const failingStep = findFailingStep(run);
   const resolvedSeverity = deriveSeverity(run, severity);
   const steps = stepsUpToFailure(run);
@@ -49,7 +49,7 @@ function generateTicketText(run, project, { severity } = {}) {
     `Summary: [${run.suiteName}] ${failingStep ? `${failingStep.name} fails` : 'Run failed'}`,
     `Environment: ${project.name} — ${run.environment || ''} (${host})`,
     `Severity: ${resolvedSeverity}`,
-    `Reporter: QA`,
+    `Reporter: ${reporter || 'QA'}`,
     `Status: Open`,
     '',
     'Steps to reproduce:',
@@ -64,20 +64,20 @@ function generateTicketText(run, project, { severity } = {}) {
   return lines.join('\n');
 }
 
-function ticketFromRun(run, project) {
+function ticketFromRun(run, project, { reporter } = {}) {
   const failingStep = findFailingStep(run);
   const now = new Date().toISOString();
 
   return {
     title: `[${run.suiteName}] ${failingStep ? `${failingStep.name} fails` : 'Run failed'}`,
-    description: generateTicketText(run, project),
+    description: generateTicketText(run, project, { reporter }),
     severity: deriveSeverity(run),
     status: 'backlog',
     projectId: project.id,
     runId: run.runId,
     labels: [],
     assignee: null,
-    reporter: 'QA',
+    reporter: reporter || 'QA',
     reproductionSteps: stepsUpToFailure(run).map((s) => s.name),
     attachments: (run.capturedMedia || [])
       .filter((m) => !run.reportSelection || run.reportSelection.selectedMediaIds.includes(m.id))

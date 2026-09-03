@@ -117,6 +117,19 @@ export function Suites({ data, route, startRun }) {
   const { projects, suites, runs, reload } = data;
   const toast = useToast();
   const recorderRef = useRef(null);
+  const recUrlRef = useRef(null);
+  const [recorderHighlight, setRecorderHighlight] = useState(false);
+
+  // "New Suite" (and the sidebar's Recorder deep-link) both mean "I want to
+  // record a new test" — scroll to the recorder, pulse a highlight ring so
+  // it's obvious where to look, and focus the URL field so the user can type
+  // straight away.
+  const focusRecorder = () => {
+    recorderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    recUrlRef.current?.focus();
+    setRecorderHighlight(true);
+    setTimeout(() => setRecorderHighlight(false), 1600);
+  };
 
   const [tab, setTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -158,11 +171,13 @@ export function Suites({ data, route, startRun }) {
     };
   }, [recProjectId]);
 
-  // Scroll to the recorder panel when arriving via the sidebar's "Recorder" link.
+  // Scroll to the recorder panel when arriving via a "?panel=recorder" deep
+  // link (New Suite from a project card, etc.).
   useEffect(() => {
-    if (route?.query?.panel === 'recorder' && recorderRef.current) {
-      recorderRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (route?.query?.panel === 'recorder') {
+      focusRecorder();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route?.query?.panel]);
 
   // Live steps stream from the recorder while it's running.
@@ -299,11 +314,7 @@ export function Suites({ data, route, startRun }) {
           <Button variant="outline" onClick={handleImportSuite}>
             <Upload className="h-4 w-4" /> Import Suite
           </Button>
-          <Button
-            onClick={() => {
-              recorderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }}
-          >
+          <Button onClick={focusRecorder}>
             <Plus className="h-4 w-4" /> New Suite
           </Button>
         </div>
@@ -350,7 +361,12 @@ export function Suites({ data, route, startRun }) {
         ))}
       </div>
 
-      <div ref={recorderRef} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <div
+        ref={recorderRef}
+        className={`rounded-xl border bg-card p-5 shadow-sm transition-all ${
+          recorderHighlight ? 'border-primary ring-2 ring-primary/40' : 'border-border'
+        }`}
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-2">
             <Radio className="h-4 w-4 text-primary" />
@@ -388,7 +404,7 @@ export function Suites({ data, route, startRun }) {
           ) : (
             <span className="text-sm text-muted-foreground">Not recording.</span>
           )}
-          <Input className="flex-1" placeholder="https://app.example.com" value={recUrl} onChange={(e) => setRecUrl(e.target.value)} disabled={recording} />
+          <Input ref={recUrlRef} className="flex-1" placeholder="https://app.example.com  ·  or  http://localhost:3000" value={recUrl} onChange={(e) => setRecUrl(e.target.value)} disabled={recording} />
           {!recording && (
             <Button onClick={handleStartRecording} disabled={starting}>
               <Circle className="h-4 w-4 fill-current" /> {starting ? 'Starting…' : 'Start Recording'}

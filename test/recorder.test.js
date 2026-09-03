@@ -43,6 +43,28 @@ test('createRecorder: captures goto/fill/click steps while driving the page prog
   assert.equal(recorder.isRunning(), false);
 });
 
+test('createRecorder: a click on a decorative leaf records the interactive ancestor, not the span', async (t) => {
+  const fixture = await startFixtureServer();
+  t.after(() => fixture.close());
+
+  const recorder = createRecorder();
+  await recorder.start({ url: fixture.url });
+  t.after(async () => {
+    if (recorder.isRunning()) await recorder.stop();
+  });
+
+  const page = recorder._page;
+  // Click the inner <span> — the recorded selector must climb to the parent
+  // <button> and use its text, never emit "span.inner:nth-of-type(...)".
+  await page.click('.inner');
+  await page.waitForTimeout(200);
+
+  const steps = await recorder.stop();
+  const clickStep = steps.find((s) => s.type === 'click' && String(s.selector).includes('Wrapped'));
+  assert.ok(clickStep, `expected a click step targeting the wrapping button, got: ${JSON.stringify(steps)}`);
+  assert.equal(clickStep.selector, 'button:has-text("Wrapped")');
+});
+
 test('createRecorder: password fields record "********" literally, never the real value', async (t) => {
   const fixture = await startFixtureServer();
   t.after(() => fixture.close());

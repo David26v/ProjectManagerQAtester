@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search,
   Plus,
@@ -104,6 +104,17 @@ export function Projects({ data, onNewProject, startRun }) {
   const [envForm, setEnvForm] = useState({ name: '', baseUrl: '', browserProfile: '' });
   const [testState, setTestState] = useState('idle'); // idle | testing | connected | failed
   const [connectionStatus, setConnectionStatus] = useState({}); // `${projectId}:${envName}` -> 'connected'|'failed'
+  const [repoOverview, setRepoOverview] = useState({}); // projectId -> { cloned, branch }
+
+  // Repo chips are cosmetic — if the overview call fails (e.g. no baseDir in
+  // a test harness) the cards just render without them.
+  useEffect(() => {
+    if (!projects.length) return;
+    window.qaflow.repo
+      .overview(projects.map((p) => p.id))
+      .then(setRepoOverview)
+      .catch(() => {});
+  }, [projects]);
 
   const projectsWithMeta = useMemo(() => {
     const rows = projects
@@ -279,6 +290,16 @@ export function Projects({ data, onNewProject, startRun }) {
                             <StatusPill status={lastRun.status} />
                           </>
                         )}
+                        {repoOverview[project.id]?.cloned && (
+                          <a
+                            href={`#/repo?project=${project.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-primary hover:underline"
+                            title="Open in the built-in git client"
+                          >
+                            <GitBranch className="h-3 w-3" /> {repoOverview[project.id].branch || 'repo'}
+                          </a>
+                        )}
                       </div>
                     </div>
                     <button
@@ -399,14 +420,13 @@ export function Projects({ data, onNewProject, startRun }) {
               >
                 Browser Connection
               </button>
-              <button
-                disabled
-                title="Repo Connection — coming in v2"
-                className="flex cursor-not-allowed items-center gap-1.5 border-b-2 border-transparent pb-2 text-sm font-medium text-muted-foreground/50"
+              <a
+                href="#/repo"
+                title="Open the built-in git client"
+                className="flex items-center gap-1.5 border-b-2 border-transparent pb-2 text-sm font-medium text-muted-foreground hover:text-foreground"
               >
                 <GitBranch className="h-3.5 w-3.5" /> Repo Connection
-                <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold">v2</span>
-              </button>
+              </a>
             </div>
 
             {activeTab === 'browser' && (

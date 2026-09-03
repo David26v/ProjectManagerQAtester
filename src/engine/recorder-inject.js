@@ -34,6 +34,28 @@ function qaflowRecorderInit() {
     return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 
+  const CLICKABLE_ROLES = ['button', 'link', 'tab', 'menuitem', 'option', 'checkbox', 'radio', 'switch'];
+
+  // A raw click usually lands on a decorative leaf — a <span> or <svg>
+  // inside the real button/link/row. Selectors built from that leaf's
+  // utility classes ("span.min-w-0.flex-1.truncate:nth-of-type(1)") are
+  // maximally fragile: any styling change or list reorder breaks the
+  // replay. So before building a selector, climb to the nearest element
+  // that's actually addressable — one with a test id / id / name, a native
+  // interactive tag, or a clickable ARIA role — and describe THAT.
+  function interactiveAncestor(el) {
+    let node = el;
+    for (let depth = 0; node && node.nodeType === 1 && depth < 8; depth += 1) {
+      const tag = node.tagName.toLowerCase();
+      if (node.getAttribute && (node.getAttribute('data-testid') || node.id || node.getAttribute('name'))) return node;
+      if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'label' || tag === 'summary') return node;
+      const role = node.getAttribute && node.getAttribute('role');
+      if (role && CLICKABLE_ROLES.indexOf(role) !== -1) return node;
+      node = node.parentElement;
+    }
+    return el;
+  }
+
   function selectorFor(el) {
     if (!el || el.nodeType !== 1) return '';
 
@@ -46,9 +68,13 @@ function qaflowRecorderInit() {
     if (name) return `[name="${escapeAttrValue(name)}"]`;
 
     const tag = el.tagName.toLowerCase();
-    if (tag === 'a' || tag === 'button') {
-      const text = (el.textContent || '').trim();
-      if (text) return `${tag}:has-text("${text}")`;
+    const role = (el.getAttribute && el.getAttribute('role')) || '';
+    const text = (el.textContent || '').trim().slice(0, 60);
+    if ((tag === 'a' || tag === 'button') && text) {
+      return `${tag}:has-text("${escapeAttrValue(text)}")`;
+    }
+    if (role && CLICKABLE_ROLES.indexOf(role) !== -1 && text) {
+      return `[role="${role}"]:has-text("${escapeAttrValue(text)}")`;
     }
 
     // Fallback: tag.class:nth-of-type(n) among same-tag siblings.
@@ -109,8 +135,8 @@ function qaflowRecorderInit() {
   document.addEventListener(
     'click',
     (e) => {
-      const el = e.target;
-      if (!el || el.nodeType !== 1) return;
+      if (!e.target || e.target.nodeType !== 1) return;
+      const el = interactiveAncestor(e.target);
       window.__qaflowRecord({
         type: 'click',
         selector: selectorFor(el),

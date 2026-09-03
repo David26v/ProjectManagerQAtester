@@ -1,14 +1,26 @@
-# QA Flow — User Guide
+# Astreus Tech Tester Tool — User Guide
 
-QA Flow lets a QA tester record a browser flow once, replay it as an automated
-test with full evidence capture, and turn failures into shareable bug reports —
-without writing any code.
+Astreus Tech Tester Tool (formerly QA Flow) lets a QA tester record a browser
+flow once, replay it as an automated test with full evidence capture, and turn
+failures into shareable bug reports — without writing any code.
 
 The core loop:
 
-**Connect → Record → Save → Run → Review → Report**
+**Sign in → Connect → Record → Save → Run → Review → Report**
 
 ---
+
+## 0. Sign in
+
+The app opens on a sign-in screen. Enter the **email and password** your
+workspace owner gave you — access is invite-only; there is no self-signup or
+password-reset link, so ask the owner if you're locked out.
+
+- You stay signed in between launches (the session is stored encrypted on
+  your device and restored automatically).
+- Everything you see — projects, suites, runs, tickets — lives in the
+  **shared cloud workspace**: your teammates see the same data live.
+- Sign out from **Settings → Account**.
 
 ## 1. Create a project (Connect)
 
@@ -49,12 +61,14 @@ It's added to the project picked in the file's contents, ready to run.
   lets you choose the **environment**, **headless or headed**, a **retry
   count** (up to 3), and an optional **credential profile**.
 - Click **Run Suite** — you're taken to **Runs** and a live progress banner
-  tracks each step. A toast announces Passed/Failed and opens the run detail.
+  tracks each step. When the run finishes, a **completion dialog** shows the
+  verdict and step tally with one-click paths to **View Details** or (on a
+  failure) **Build Report**.
 - Every run captures automatically:
   - a **video** of the whole run,
   - a **screenshot at the failing step**,
-  - all **console errors**,
-  - all **network failures**.
+  - all **console errors** and **uncaught page exceptions**,
+  - all **network failures** and every **HTTP 4xx/5xx response**.
 
 Runs can also be triggered without the UI — see §9 (CLI & API).
 
@@ -69,7 +83,7 @@ later instead of running it now:
    shows up on the **Dashboard**'s Scheduled Runs card, where you can pause
    (toggle) or delete it.
 
-**Schedules only fire while QA Flow is open.** There's no background service
+**Schedules only fire while the app is open.** There's no background service
 or OS-level task — if the app isn't running when a scheduled time arrives,
 that run is skipped. A one-time ("Once") schedule that already fired shows as
 "Completed" and can't be re-enabled; daily/weekly schedules keep computing
@@ -86,7 +100,11 @@ re-open it before the scheduled time) for scheduled runs to actually happen.
   severity.
 - **Console Logs** / **Network Failures** — the captured diagnostics.
 - **Artifacts** — every captured file.
-- **Open Folder** reveals the run's folder on disk; **Re-run** repeats it.
+- **Open Folder** reveals the run's folder on disk for a local run. For a
+  cloud run (media uploaded to the workspace — the normal case), it copies a
+  **signed video link** to your clipboard instead, valid for one hour —
+  paste it into chat to share playback without exporting anything.
+- **Re-run** repeats the run with the same environment.
 
 ## 5. Build and send a report (Report)
 
@@ -98,12 +116,13 @@ From a run, click **Build Report**:
    **Evidence Preview** with zoom and notes. Selections save automatically.
 2. **Fill the summary** — title, description, severity, environment, and
    editable reproduction steps. The **Live Preview** shows the JSON and the
-   Jira-style ticket text as you go.
+   ticket text as you go.
 3. **Generate** — pick any combination of formats:
    - **JSON** — the raw run report.
    - **Excel** — a formatted spreadsheet.
-   - **Jira Ticket** — creates a ticket on the Kanban board (copyable
-     Jira-style text).
+   - **Kanban Ticket** — creates a ticket on the built-in Kanban board
+     (with copyable plain-text ticket format). Bug tracking lives entirely
+     on the board — there is no external Jira integration.
    - **Zip Bundle / "Send to David"** — one zip with the report + all
      selected evidence, ready to send to a developer.
 
@@ -140,7 +159,7 @@ profile:
 
 1. Fill in profile name, project, environment, login URL and username, then
    click **Capture Session** — a real browser opens.
-2. Log in manually, then click **I've logged in — capture**. QA Flow stores
+2. Log in manually, then click **I've logged in — capture**. The app stores
    the browser session **encrypted with your OS keychain** (never the
    password itself).
 
@@ -168,7 +187,34 @@ authenticated.
   evidence from the linked run, console/network diagnostics, comments, and a
   QA checklist.
 
-## 9. CLI & local API (automation)
+## 9. Repository (built-in git client)
+
+**Repository** (sidebar) is an embedded git client — Sourcetree-style — so
+you can work with the project's GitHub repo without leaving the app:
+
+1. Pick the project, paste the repo's **HTTPS URL**, and (for private repos
+   or pushing) a **GitHub personal access token** — the token is stored
+   encrypted on this device only. Click **Clone Repository**.
+2. **Working Copy** shows staged and unstaged files with one-click
+   Stage / Unstage / Discard, a per-file diff view, and a commit box.
+   Commits are authored as your signed-in account.
+3. **History** shows the commit graph (branches and merges drawn as lanes)
+   with branch labels pinned to their tip commits, an "Uncommitted changes"
+   row when your working copy is dirty, and clicking a commit lists its
+   changed files with full line-numbered diffs.
+4. The left rail lists branches — click to switch; clicking a
+   **remote-only** branch checks it out locally. Create branches inline.
+5. Toolbar: **Pull**, **Push**, **Fetch** against `origin` — with ahead (↑)
+   and behind (↓) counters showing how far you've diverged, and a summary
+   strip up top (repo, branch, clean/dirty state, last commit).
+6. Project cards on the **Projects** screen show a branch chip for any
+   project with a connected repo — click it to jump straight into the
+   client on that project.
+
+Each device keeps its own working copy (under the app's data folder); the
+clone is per-machine even though the rest of the workspace is shared.
+
+## 10. CLI & local API (automation)
 
 While the app is open, a REST API listens on `127.0.0.1:4317` (port
 configurable in **Settings**). The bundled CLI wraps it:
@@ -184,7 +230,7 @@ post-deploy hook. There is also a deploy webhook:
 `POST /webhooks/deploy-complete {"projectId": "...", "tag": "smoke"}` runs
 every non-archived suite tagged `smoke` for that project.
 
-## 10. Settings
+## 11. Settings
 
 - **Profile** — your name and role (Developer role reveals an extra
   Diagnostics card with raw report access).
@@ -192,7 +238,7 @@ every non-archived suite tagged `smoke` for that project.
 - **Data** — where everything lives on disk (see below).
 - **About** — app/Electron versions, and Updates (see below).
 
-## 11. Updates
+## 12. Updates
 
 An installed copy of Astreus Tech Tester Tool checks for a new version automatically on
 launch and every few hours, downloads it in the background, and shows a
@@ -204,16 +250,23 @@ don't apply — pull the latest code with `git pull` instead.
 
 ## Where your data lives
 
-Everything is local files — no external database, nothing leaves your
-machine. Under the app's user-data folder, `qaflow-data/` holds:
+Since v2, workspace data is **shared in the cloud** — everyone signed into
+the workspace sees the same projects, suites, runs, and tickets, live. Only
+secrets and per-device preferences stay on your machine:
 
-| Path | Contents |
+| Data | Where it lives |
 |---|---|
-| `projects.json` | projects + environments |
-| `suites/<id>.json` | recorded suites (steps as JSON) |
-| `runs/<id>/` | `report.json` + video + screenshots per run |
-| `credentials/` | profile index + encrypted session blobs |
-| `tickets.json` | kanban tickets |
-| `settings.json` | app settings |
+| Projects, environments | Cloud (shared) |
+| Suites (recorded steps) | Cloud (shared) |
+| Runs + reports | Cloud (shared) |
+| Run videos & screenshots | Cloud storage (played back via signed links) |
+| Kanban tickets & comments | Cloud (shared) |
+| Schedules | Cloud (shared) |
+| Credential profile *metadata* (name, project, username) | Cloud (shared) |
+| Credential *secrets* (captured sessions, passwords) | **This device only**, encrypted with your OS keychain — never synced |
+| App settings (name, role, API port) | This device only (`settings.json`) |
+| Your sign-in session | This device only, encrypted (`auth-session.bin`) |
 
-Backing up or moving that folder moves your whole workspace.
+A credential profile created on one machine shows up in everyone's list, but
+its secret only exists on the machine that captured it — run suites that
+need it from that machine, or capture the session again on yours.

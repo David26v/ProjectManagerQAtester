@@ -16,10 +16,17 @@ projects, suites, runs (with media), and tickets.
 - **Rename:** user-visible branding becomes "Astreus Tech Tester Tool".
   Internal identifiers stay (`window.qaflow`, `qaflow-media://`, `qaflow`
   CLI, `qaflow-data` dir) — zero-value churn otherwise.
-- **Supabase project:** the user created a dedicated project; creds live in
-  `qa-flow/.env` (gitignored; never commit): `NEXT_PUBLIC_SUPABASE_URL`,
-  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-  `DATABASE_URL`.
+- **Supabase project (AMENDED 2026-08-25, user decision):** Astreus does NOT
+  get its own Supabase project. It lives in an **isolated `astreus` Postgres
+  schema** inside the user's existing Supabase project — the one whose creds
+  are already in `qa-flow/.env` (gitignored; never commit). That project also
+  hosts a LIVE ERP in its `public` schema: **nothing outside the `astreus`
+  schema and the `astreus-run-media` storage bucket may ever be created,
+  altered, or dropped.** Auth is the project's shared Supabase Auth — its
+  existing users can sign into Astreus (intended). Schema changes use
+  `prisma db push` scoped via `?schema=astreus` on the connection string
+  (keeps `_prisma_migrations` and every table out of `public`; avoids
+  shadow-database requirements on the live instance).
 
 ## Architecture
 

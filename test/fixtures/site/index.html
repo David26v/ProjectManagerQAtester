@@ -11,6 +11,8 @@
   <button id="signin">Sign in</button>
   <div id="error" style="display: none">Email is required</div>
   <button id="boom">Boom</button>
+  <button id="throw">Throw</button>
+  <button class="wrap-btn"><span class="inner">Wrapped</span></button>
 
   <script>
     document.getElementById('signin').addEventListener('click', () => {
@@ -24,6 +26,10 @@
 
     document.getElementById('boom').addEventListener('click', () => {
       console.error('boom');
+    });
+
+    document.getElementById('throw').addEventListener('click', () => {
+      throw new Error('uncaught fixture explosion');
     });
   </script>
 </body>

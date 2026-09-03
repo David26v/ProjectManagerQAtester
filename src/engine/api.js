@@ -18,25 +18,38 @@ function resolveEnvironment(project, environmentName) {
   return envs[0] || null;
 }
 
-function createApi({ store, runSuiteFn }) {
+function createApi({ store, runSuiteFn, isSignedIn }) {
   const app = express();
   app.use(express.json());
 
-  app.get('/projects', (req, res) => {
-    res.json(store.listProjects());
+  // `isSignedIn` is optional — omitted entirely (undefined), every existing
+  // engine test (which never wires an auth module) keeps working unchanged.
+  // When main.js wires it (`() => auth.getUser() != null`), every route
+  // below 503s while logged out — the REST API is otherwise left running
+  // once started (see main.js's `bootApiOnce` comment), so this is the only
+  // gate a logout actually gets.
+  if (isSignedIn) {
+    app.use((req, res, next) => {
+      if (!isSignedIn()) return res.status(503).json({ error: 'Not signed in' });
+      next();
+    });
+  }
+
+  app.get('/projects', async (req, res) => {
+    res.json(await store.listProjects());
   });
 
-  app.get('/projects/:id/suites', (req, res) => {
-    const project = store.getProject(req.params.id);
+  app.get('/projects/:id/suites', async (req, res) => {
+    const project = await store.getProject(req.params.id);
     if (!project) return res.status(404).json({ error: `Project "${req.params.id}" not found` });
-    res.json(store.listSuites(project.id));
+    res.json(await store.listSuites(project.id));
   });
 
   app.post('/projects/:id/suites/:suiteId/run', async (req, res) => {
-    const project = store.getProject(req.params.id);
+    const project = await store.getProject(req.params.id);
     if (!project) return res.status(404).json({ error: `Project "${req.params.id}" not found` });
 
-    const suite = store.getSuite(req.params.suiteId);
+    const suite = await store.getSuite(req.params.suiteId);
     if (!suite || suite.projectId !== project.id) {
       return res.status(404).json({ error: `Suite "${req.params.suiteId}" not found` });
     }
@@ -50,14 +63,14 @@ function createApi({ store, runSuiteFn }) {
     }
   });
 
-  app.get('/runs', (req, res) => {
+  app.get('/runs', async (req, res) => {
     const { projectId, suiteId } = req.query;
     const filter = suiteId ? { suiteId, projectId } : projectId;
-    res.json(store.listRuns(filter));
+    res.json(await store.listRuns(filter));
   });
 
-  app.get('/runs/:runId/report', (req, res) => {
-    const run = store.getRun(req.params.runId);
+  app.get('/runs/:runId/report', async (req, res) => {
+    const run = await store.getRun(req.params.runId);
     if (!run) return res.status(404).json({ error: `Run "${req.params.runId}" not found` });
     res.json(run);
   });
@@ -66,13 +79,12 @@ function createApi({ store, runSuiteFn }) {
     const { projectId, tag = 'smoke' } = req.body || {};
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
 
-    const project = store.getProject(projectId);
+    const project = await store.getProject(projectId);
     if (!project) return res.status(404).json({ error: `Project "${projectId}" not found` });
 
     try {
-      const suites = store
-        .listSuites(project.id)
-        .filter((s) => !s.archived && Array.isArray(s.tags) && s.tags.includes(tag));
+      const allSuites = await store.listSuites(project.id);
+      const suites = allSuites.filter((s) => !s.archived && Array.isArray(s.tags) && s.tags.includes(tag));
 
       const results = [];
       for (const suite of suites) {
@@ -87,10 +99,10 @@ function createApi({ store, runSuiteFn }) {
     }
   });
 
-  app.get('/projects/:id/auth/status', (req, res) => {
-    const project = store.getProject(req.params.id);
+  app.get('/projects/:id/auth/status', async (req, res) => {
+    const project = await store.getProject(req.params.id);
     if (!project) return res.status(404).json({ error: `Project "${req.params.id}" not found` });
-    res.json({ profiles: store.listCredentials(project.id) });
+    res.json({ profiles: await store.listCredentials(project.id) });
   });
 
   let server = null;

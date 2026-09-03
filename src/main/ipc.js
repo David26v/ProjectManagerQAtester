@@ -21,6 +21,8 @@ const sessionEngine = require('../engine/session.js');
 const { exportRunsToExcel } = require('../engine/exporters/excel.js');
 const { generateTicketText, ticketFromRun } = require('../engine/exporters/ticket.js');
 const { createBundle } = require('../engine/exporters/bundle.js');
+const { BUCKET, signedMediaUrl } = require('../engine/cloud/media.js');
+const gitEngine = require('../engine/git.js');
 
 // Mirrors `resolveEnvironment` in engine/api.js (kept local — that function
 // isn't exported, and it's a small enough helper that duplicating it here
@@ -36,10 +38,15 @@ function resolveEnvironment(project, environmentName) {
   return envs[0] || null;
 }
 
-function decryptCredential(store, credentialProfileId) {
-  const meta = store.listCredentials().find((c) => c.id === credentialProfileId);
+async function decryptCredential(store, credentialProfileId) {
+  const list = await store.listCredentials();
+  const meta = list.find((c) => c.id === credentialProfileId);
   if (!meta) throw new Error(`Credential profile "${credentialProfileId}" not found`);
-  const blob = store.readCredentialBlob(credentialProfileId);
+  // `getCredentialBlob` is the ONE name used from here on regardless of
+  // which store implementation is active (v1 JSON store aliases it to its
+  // original `readCredentialBlob`; the cloud store only ever had this name)
+  // — see store.js for the alias.
+  const blob = await store.getCredentialBlob(credentialProfileId);
   if (!blob) throw new Error(`Credential profile "${credentialProfileId}" has no stored session`);
   const plaintext = meta.encrypted ? safeStorage.decryptString(blob) : blob.toString('utf8');
   return { meta, plaintext };
@@ -66,14 +73,144 @@ const KNOWN_STEP_TYPES = new Set([
   'assertText',
 ]);
 
-function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => null }) {
+// Channels reachable while logged out — everything else funnels through the
+// `handle()` wrapper's guard below. `auth:*` obviously must work pre-login;
+// `app:version` is cosmetic (About/titlebar); `updates:*` must keep working
+// logged-out too, since an update should be installable without forcing a
+// sign-in first.
+const AUTH_EXEMPT_PREFIXES = ['auth:', 'updates:'];
+const AUTH_EXEMPT_CHANNELS = new Set(['app:version']);
+
+function isAuthExempt(channel) {
+  return AUTH_EXEMPT_CHANNELS.has(channel) || AUTH_EXEMPT_PREFIXES.some((p) => channel.startsWith(p));
+}
+
+function registerIpc({
+  store,
+  getMainWindow,
+  updates,
+  getBrowserStatus = () => null,
+  supabase = null,
+  auth = null,
+  // Device-local data root (`userData/qaflow-data`) — the repo handlers use
+  // it for per-project working copies (`repos/<projectId>`) and the
+  // encrypted GitHub token. Optional so tests that register IPC without it
+  // keep working; repo channels then reject with a clear message.
+  baseDir = null,
+  // Defaults to the plain (unbuffered) `send()` defined just below so any
+  // caller that doesn't pass this (none currently — main.js always does)
+  // still gets a working, if racy, `auth:changed` push. main.js passes its
+  // own `sendAuthStatus`, which buffers the last status and re-flushes it
+  // on `did-finish-load` — same event-drop race `browser:status`/
+  // `updates:status` already guard against; auth restore can finish before
+  // the renderer's listener mounts.
+  notifyAuthStatus = null,
+}) {
   function send(channel, payload) {
     const win = getMainWindow();
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   }
 
+  // Single guard point for "must be signed in" rather than editing every
+  // handler individually — `auth` is optional (tests/tools that don't wire
+  // an auth module at all get the pre-Task-4 unrestricted behavior).
   function handle(channel, fn) {
-    ipcMain.handle(channel, async (_event, ...args) => fn(...args));
+    ipcMain.handle(channel, async (_event, ...args) => {
+      if (auth && !isAuthExempt(channel) && !auth.getUser()) {
+        throw new Error('Not signed in');
+      }
+      return fn(...args);
+    });
+  }
+
+  // Ticket reporter identity: the signed-in user's email, preferring
+  // `user_metadata.name` when Supabase Auth has one set. Falls back to the
+  // exporter's own 'QA' default (via `undefined`) when `auth` isn't wired at
+  // all — e.g. no test/tool exercises this path without an auth module.
+  function reporterIdentity() {
+    if (!auth) return undefined;
+    const user = auth.getUser();
+    if (!user) return undefined;
+    return (user.user_metadata && user.user_metadata.name) || user.email;
+  }
+
+  // ---- auth ----
+  // Registered unconditionally — Task 5's renderer calls `auth.status()`
+  // unconditionally on mount, and must get a real `{loggedIn:false, ...}`
+  // answer rather than an ipcMain "no handler registered" error on a dev
+  // checkout / smoke run with no cloud env at all. `login`/`logout` throw a
+  // clear message in that case instead of silently no-op'ing.
+  // `configured: false` tells the renderer there is no cloud auth at all
+  // (dev checkout / smoke without .env) so it must NOT gate the UI behind a
+  // Login screen nobody could ever get past — data IPC is ungated in that
+  // case too (see `handle()` above). `await auth.ready` makes the boot-time
+  // answer final: without it, a status() call racing session restore would
+  // read as "logged out" for a user whose auto-login is about to succeed.
+  handle('auth:status', async () => {
+    if (!auth) return { loggedIn: false, email: null, name: null, configured: false };
+    await auth.ready;
+    return { ...auth.status(), configured: true };
+  });
+  handle('auth:login', async ({ email, password } = {}) => {
+    if (!auth) throw new Error('Cloud auth is not configured');
+    return auth.login(email, password);
+  });
+  handle('auth:logout', async () => {
+    if (!auth) throw new Error('Cloud auth is not configured');
+    await auth.logout();
+    return true;
+  });
+  if (auth) {
+    auth.onChange((status) => (notifyAuthStatus || ((s) => send('auth:changed', s)))(status));
+  }
+
+  // ---- cloud-media export support ----
+  // Cloud runs (Task 3) hold their media in Supabase Storage as
+  // `storage:<runId>/<file>` paths, but the exporters (excel/bundle) read
+  // files off disk relative to a run dir. `materializeRunMedia` bridges the
+  // two: for a cloud run it downloads every referenced object into a fresh
+  // temp dir and returns a rewritten copy of the run whose media paths are
+  // the bare filenames inside it — the exporters then work unchanged. Local
+  // (legacy) runs pass straight through to the real run dir. Callers must
+  // invoke `cleanup()` in a `finally`.
+  function isStoragePath(p) {
+    return typeof p === 'string' && p.startsWith('storage:');
+  }
+
+  function hasStorageMedia(run) {
+    return (run.capturedMedia || []).some((m) => isStoragePath(m.path));
+  }
+
+  async function materializeRunMedia(run) {
+    if (!hasStorageMedia(run)) {
+      return { run, dir: store.runDir(run.runId), cleanup: () => {} };
+    }
+    if (!supabase) throw new Error('This run\'s media lives in cloud storage, which is not configured');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qaflow-export-'));
+    const copy = JSON.parse(JSON.stringify(run));
+    const bare = (p) => (isStoragePath(p) ? p.slice('storage:'.length).split('/').pop() : p);
+
+    for (const media of copy.capturedMedia || []) {
+      if (!isStoragePath(media.path)) continue;
+      const key = media.path.slice('storage:'.length);
+      const { data, error } = await supabase.storage.from(BUCKET).download(key);
+      if (error) throw new Error(`Failed to download run media "${key}": ${error.message}`);
+      fs.writeFileSync(path.join(dir, bare(media.path)), Buffer.from(await data.arrayBuffer()));
+      media.path = bare(media.path);
+    }
+
+    if (isStoragePath(copy.videoPath)) copy.videoPath = bare(copy.videoPath);
+    for (const step of copy.steps || []) {
+      if (isStoragePath(step.screenshot)) step.screenshot = bare(step.screenshot);
+    }
+
+    // The bundle exporter prefers a real report.json from the run dir — give
+    // it the CANONICAL report (original storage paths), not the rewritten
+    // local-path copy, so the bundled report matches what the cloud holds.
+    fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(run, null, 2));
+
+    return { run: copy, dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
   }
 
   // Count of runs currently executing via `executeRun` — incremented for
@@ -89,8 +226,8 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
   handle('projects:list', () => store.listProjects());
   handle('projects:get', (id) => store.getProject(id));
   handle('projects:save', (project) => store.saveProject(project));
-  handle('projects:remove', (id) => {
-    store.deleteProject(id);
+  handle('projects:remove', async (id) => {
+    await store.deleteProject(id);
     return true;
   });
 
@@ -98,8 +235,8 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
   handle('suites:list', (projectId) => store.listSuites(projectId));
   handle('suites:get', (id) => store.getSuite(id));
   handle('suites:save', (suite) => store.saveSuite(suite));
-  handle('suites:remove', (id) => {
-    store.deleteSuite(id);
+  handle('suites:remove', async (id) => {
+    await store.deleteSuite(id);
     return true;
   });
 
@@ -151,9 +288,9 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
       throw new Error('Browser is still installing — try again in a minute');
     }
 
-    const suite = store.getSuite(suiteId);
+    const suite = await store.getSuite(suiteId);
     if (!suite) throw new Error(`Suite "${suiteId}" not found`);
-    const project = store.getProject(suite.projectId);
+    const project = await store.getProject(suite.projectId);
     if (!project) throw new Error(`Project "${suite.projectId}" not found`);
 
     const resolvedEnvironment = resolveEnvironment(project, environment);
@@ -164,7 +301,7 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
     activeRunCount += 1;
     try {
       if (credentialProfileId) {
-        const { meta, plaintext } = decryptCredential(store, credentialProfileId);
+        const { meta, plaintext } = await decryptCredential(store, credentialProfileId);
         credentialMeta = meta;
         if (meta.mode === 'manual') {
           const { username, password } = JSON.parse(plaintext);
@@ -191,7 +328,7 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
       // Credentials' "Last used" stops reading "never" forever once a
       // profile has actually been used for a run.
       if (credentialMeta) {
-        store.saveCredential({ ...credentialMeta, lastUsedAt: new Date().toISOString() });
+        await store.saveCredential({ ...credentialMeta, lastUsedAt: new Date().toISOString() });
       }
 
       return report;
@@ -208,9 +345,30 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
 
   handle('runs:run', async (suiteId, opts = {}) => executeRun(suiteId, opts, 'manual'));
 
-  handle('runs:openDir', (runId) => {
-    shell.openPath(store.runDir(runId));
-    return true;
+  // Local runs open their folder as before. A cloud run has no local dir
+  // (saveRun uploaded its media and reclaimed the disk) — return
+  // `{ cloud: true, mediaLink }` instead so the renderer can copy a signed
+  // playback URL rather than opening a folder that doesn't exist.
+  handle('runs:openDir', async (runId) => {
+    const dir = store.runDir(runId);
+    if (fs.existsSync(dir)) {
+      shell.openPath(dir);
+      return { opened: true };
+    }
+
+    const run = await store.getRun(runId);
+    if (run && hasStorageMedia(run)) {
+      let mediaLink = null;
+      if (supabase) {
+        const media =
+          (run.capturedMedia || []).find((m) => m.type === 'video' && isStoragePath(m.path)) ||
+          (run.capturedMedia || []).find((m) => isStoragePath(m.path));
+        if (media) mediaLink = await signedMediaUrl(supabase, media.path.slice('storage:'.length));
+      }
+      return { cloud: true, mediaLink };
+    }
+
+    return { opened: false };
   });
 
   // ---- recorder ----
@@ -229,7 +387,7 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
     let storageStatePath = null;
     let credentialMeta = null;
     if (credentialProfileId) {
-      const { meta, plaintext } = decryptCredential(store, credentialProfileId);
+      const { meta, plaintext } = await decryptCredential(store, credentialProfileId);
       if (meta.mode === 'manual') {
         throw new Error("Manual-entry profiles can't seed the recorder — use a captured session profile");
       }
@@ -256,7 +414,7 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
     // Metadata-only update — same as executeRun — once the recorder has
     // actually started using this profile's session.
     if (credentialMeta) {
-      store.saveCredential({ ...credentialMeta, lastUsedAt: new Date().toISOString() });
+      await store.saveCredential({ ...credentialMeta, lastUsedAt: new Date().toISOString() });
     }
 
     return { running: true, projectId };
@@ -304,7 +462,7 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
       ? safeStorage.encryptString(storageStateJson)
       : Buffer.from(storageStateJson, 'utf8');
 
-    const savedMeta = store.saveCredential(
+    const savedMeta = await store.saveCredential(
       {
         id: crypto.randomUUID(),
         name: name || `Session ${new Date().toLocaleString()}`,
@@ -337,7 +495,7 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
     const encrypted = safeStorage.isEncryptionAvailable();
     const blob = encrypted ? safeStorage.encryptString(plaintext) : Buffer.from(plaintext, 'utf8');
 
-    const savedMeta = store.saveCredential(
+    const savedMeta = await store.saveCredential(
       {
         id: crypto.randomUUID(),
         name,
@@ -369,20 +527,20 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
   });
 
   handle('session:list', (projectId) => store.listCredentials(projectId));
-  handle('session:remove', (id) => {
-    store.deleteCredential(id);
+  handle('session:remove', async (id) => {
+    await store.deleteCredential(id);
     return true;
   });
 
   // ---- reports ----
-  handle('reports:saveSelection', (runId, reportSelection) => {
-    const run = store.getRun(runId);
+  handle('reports:saveSelection', async (runId, reportSelection) => {
+    const run = await store.getRun(runId);
     if (!run) throw new Error(`Run "${runId}" not found`);
     return store.saveRun({ ...run, reportSelection });
   });
 
   handle('reports:exportExcel', async (runId) => {
-    const run = store.getRun(runId);
+    const run = await store.getRun(runId);
     if (!run) throw new Error(`Run "${runId}" not found`);
 
     const win = getMainWindow();
@@ -393,12 +551,17 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
     });
     if (canceled || !filePath) return null;
 
-    await exportRunsToExcel([run], () => store.runDir(runId), filePath);
+    const { run: localRun, dir, cleanup } = await materializeRunMedia(run);
+    try {
+      await exportRunsToExcel([localRun], () => dir, filePath);
+    } finally {
+      cleanup();
+    }
     return filePath;
   });
 
   handle('reports:exportJson', async (runId) => {
-    const run = store.getRun(runId);
+    const run = await store.getRun(runId);
     if (!run) throw new Error(`Run "${runId}" not found`);
 
     const win = getMainWindow();
@@ -414,7 +577,7 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
   });
 
   handle('reports:bundle', async (runId) => {
-    const run = store.getRun(runId);
+    const run = await store.getRun(runId);
     if (!run) throw new Error(`Run "${runId}" not found`);
 
     const win = getMainWindow();
@@ -427,30 +590,35 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
 
     const outputDir = path.dirname(filePath);
     const fileName = path.basename(filePath);
-    return createBundle(run, store.runDir(runId), outputDir, { fileName });
+    const { run: localRun, dir, cleanup } = await materializeRunMedia(run);
+    try {
+      return await createBundle(localRun, dir, outputDir, { fileName });
+    } finally {
+      cleanup();
+    }
   });
 
-  handle('reports:ticketText', (runId) => {
-    const run = store.getRun(runId);
+  handle('reports:ticketText', async (runId) => {
+    const run = await store.getRun(runId);
     if (!run) throw new Error(`Run "${runId}" not found`);
-    const project = store.getProject(run.projectId);
+    const project = await store.getProject(run.projectId);
     if (!project) throw new Error('Project not found for this run');
-    return generateTicketText(run, project);
+    return generateTicketText(run, project, { reporter: reporterIdentity() });
   });
 
-  handle('reports:createTicket', (runId) => {
-    const run = store.getRun(runId);
+  handle('reports:createTicket', async (runId) => {
+    const run = await store.getRun(runId);
     if (!run) throw new Error(`Run "${runId}" not found`);
-    const project = store.getProject(run.projectId);
+    const project = await store.getProject(run.projectId);
     if (!project) throw new Error('Project not found for this run');
-    return store.saveTicket(ticketFromRun(run, project));
+    return store.saveTicket(ticketFromRun(run, project, { reporter: reporterIdentity() }));
   });
 
   // ---- tickets ----
   handle('tickets:list', () => store.listTickets());
   handle('tickets:save', (ticket) => store.saveTicket(ticket));
-  handle('tickets:remove', (id) => {
-    store.deleteTicket(id);
+  handle('tickets:remove', async (id) => {
+    await store.deleteTicket(id);
     return true;
   });
 
@@ -460,10 +628,163 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
 
   // ---- app ----
   handle('app:version', () => app.getVersion());
-  handle('app:mediaUrl', (runId, relPath) => `qaflow-media://${runId}/${relPath}`);
+  handle('app:mediaUrl', (runId, relPath) => {
+    // Cloud runs (Task 3) store media in Supabase Storage — `relPath` shows
+    // up here as the `storage:<runId>/<filename>` sentinel the cloud store
+    // wrote into the report. Legacy/local runs keep the v1 protocol.
+    if (typeof relPath === 'string' && relPath.startsWith('storage:')) {
+      if (!supabase) throw new Error('Cloud storage is not configured');
+      return signedMediaUrl(supabase, relPath.slice('storage:'.length));
+    }
+    return `qaflow-media://${runId}/${relPath}`;
+  });
   handle('app:revealPath', (p) => {
     shell.showItemInFolder(p);
     return true;
+  });
+
+  // ---- repository (embedded git client) ----
+  // Sourcetree-style git client backed by engine/git.js (isomorphic-git).
+  // One working copy per project per device under `<baseDir>/repos/<id>`;
+  // the repo URL is remembered device-locally in settings (`settings.repos`)
+  // and the GitHub token is safeStorage-encrypted at
+  // `<baseDir>/github-token.bin` — the token never crosses the bridge back
+  // to the renderer (repo:auth:get only reports that one exists).
+
+  const tokenFile = baseDir ? path.join(baseDir, 'github-token.bin') : null;
+  const tokenFlagFile = tokenFile ? tokenFile + '.plaintext' : null;
+
+  function requireRepoDir(projectId) {
+    if (!baseDir) throw new Error('Repository features are unavailable in this context');
+    if (!projectId) throw new Error('projectId is required');
+    return gitEngine.repoDirFor(baseDir, projectId);
+  }
+
+  function readGithubToken() {
+    if (!tokenFile || !fs.existsSync(tokenFile)) return null;
+    try {
+      const raw = fs.readFileSync(tokenFile);
+      return fs.existsSync(tokenFlagFile) ? raw.toString('utf8') : safeStorage.decryptString(raw);
+    } catch (e) {
+      console.warn(`[qaflow] failed to read stored GitHub token: ${e.message}`);
+      return null;
+    }
+  }
+
+  // Commit/merge author identity — the signed-in account when available,
+  // falling back to the device profile name.
+  async function gitAuthor() {
+    const user = auth && auth.getUser();
+    if (user) {
+      return {
+        name: (user.user_metadata && user.user_metadata.name) || user.email,
+        email: user.email,
+      };
+    }
+    const settings = await store.getSettings();
+    return { name: (settings && settings.userName) || 'QA', email: 'qa@astreus.local' };
+  }
+
+  async function repoUrlFor(projectId) {
+    const settings = await store.getSettings();
+    return (settings && settings.repos && settings.repos[projectId] && settings.repos[projectId].url) || null;
+  }
+
+  handle('repo:auth:get', () => ({ hasToken: Boolean(readGithubToken()) }));
+
+  handle('repo:auth:save', async ({ token } = {}) => {
+    if (!tokenFile) throw new Error('Repository features are unavailable in this context');
+    if (!token) {
+      if (fs.existsSync(tokenFile)) fs.unlinkSync(tokenFile);
+      if (fs.existsSync(tokenFlagFile)) fs.unlinkSync(tokenFlagFile);
+      return { hasToken: false };
+    }
+    fs.mkdirSync(baseDir, { recursive: true });
+    if (safeStorage.isEncryptionAvailable()) {
+      fs.writeFileSync(tokenFile, safeStorage.encryptString(token));
+      if (fs.existsSync(tokenFlagFile)) fs.unlinkSync(tokenFlagFile);
+    } else {
+      fs.writeFileSync(tokenFile, token, 'utf8');
+      fs.writeFileSync(tokenFlagFile, '1');
+    }
+    return { hasToken: true };
+  });
+
+  handle('repo:info', async (projectId) => {
+    const dir = requireRepoDir(projectId);
+    const url = await repoUrlFor(projectId);
+    const cloned = gitEngine.isCloned(dir);
+    if (!cloned) return { cloned, url, hasToken: Boolean(readGithubToken()) };
+    const [branches, tips, aheadBehind] = await Promise.all([
+      gitEngine.branches(dir),
+      gitEngine.branchTips(dir),
+      gitEngine.aheadBehind(dir),
+    ]);
+    return { cloned, url, hasToken: Boolean(readGithubToken()), branches, tips, aheadBehind };
+  });
+
+  handle('repo:overview', async (projectIds) => {
+    if (!baseDir) throw new Error('Repository features are unavailable in this context');
+    return gitEngine.overview(baseDir, Array.isArray(projectIds) ? projectIds : []);
+  });
+
+  handle('repo:clone', async ({ projectId, url } = {}) => {
+    const dir = requireRepoDir(projectId);
+    if (!url || !/^https:\/\//i.test(url)) throw new Error('Enter the repository\'s HTTPS URL');
+    if (gitEngine.isCloned(dir)) throw new Error('This project already has a local copy');
+
+    const settings = await store.getSettings();
+    await store.saveSettings({ repos: { ...(settings.repos || {}), [projectId]: { url } } });
+
+    try {
+      await gitEngine.clone({
+        dir,
+        url,
+        token: readGithubToken(),
+        onProgress: (p) => send('repo:progress', { projectId, ...p }),
+      });
+    } catch (e) {
+      // A failed clone leaves a half-written dir that would block retries
+      // with "already has a local copy" — clean it so the user can fix the
+      // URL/token and try again.
+      fs.rmSync(dir, { recursive: true, force: true });
+      throw e;
+    }
+    return { cloned: true };
+  });
+
+  handle('repo:status', (projectId) => gitEngine.status(requireRepoDir(projectId)));
+  handle('repo:log', (projectId, opts = {}) => gitEngine.log({ dir: requireRepoDir(projectId), depth: opts.depth || 200 }));
+  handle('repo:branches', (projectId) => gitEngine.branches(requireRepoDir(projectId)));
+  handle('repo:checkout', ({ projectId, ref } = {}) => gitEngine.checkout({ dir: requireRepoDir(projectId), ref }));
+  handle('repo:createBranch', ({ projectId, name } = {}) => gitEngine.createBranch({ dir: requireRepoDir(projectId), name }));
+  handle('repo:stage', ({ projectId, filepath } = {}) => gitEngine.stage(requireRepoDir(projectId), filepath));
+  handle('repo:unstage', ({ projectId, filepath } = {}) => gitEngine.unstage(requireRepoDir(projectId), filepath));
+  handle('repo:discard', ({ projectId, filepath } = {}) => gitEngine.discard(requireRepoDir(projectId), filepath));
+
+  handle('repo:commit', async ({ projectId, message } = {}) => {
+    const author = await gitAuthor();
+    return gitEngine.commit({ dir: requireRepoDir(projectId), message, author });
+  });
+
+  handle('repo:pull', async (projectId) => {
+    const author = await gitAuthor();
+    await gitEngine.pull({ dir: requireRepoDir(projectId), token: readGithubToken(), author });
+    return true;
+  });
+  handle('repo:push', async (projectId) => {
+    await gitEngine.push({ dir: requireRepoDir(projectId), token: readGithubToken() });
+    return true;
+  });
+  handle('repo:fetch', async (projectId) => {
+    await gitEngine.fetch({ dir: requireRepoDir(projectId), token: readGithubToken() });
+    return true;
+  });
+
+  handle('repo:commitFiles', ({ projectId, oid } = {}) => gitEngine.commitFiles({ dir: requireRepoDir(projectId), oid }));
+  handle('repo:diff', ({ projectId, filepath, oid = null } = {}) => {
+    const dir = requireRepoDir(projectId);
+    return oid ? gitEngine.commitDiff({ dir, oid, filepath }) : gitEngine.workingDiff({ dir, filepath });
   });
 
   // ---- updates ----
@@ -497,8 +818,8 @@ function registerIpc({ store, getMainWindow, updates, getBrowserStatus = () => n
     }
     return store.saveSchedule(schedule);
   });
-  handle('schedules:remove', (id) => {
-    store.deleteSchedule(id);
+  handle('schedules:remove', async (id) => {
+    await store.deleteSchedule(id);
     return true;
   });
 

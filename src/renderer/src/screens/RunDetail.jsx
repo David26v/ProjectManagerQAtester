@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { StatusPill } from '@/components/StatusPill';
 import { fmtDate, fmtDuration } from '@/lib/format';
-import { shortRunId, resolveMediaUrls } from '@/lib/media';
+import { shortRunId, resolveMediaUrls, openRunFolder } from '@/lib/media';
 import { deriveSeverity, findFailingStep, parseErrorDetails, SEVERITY_REASONS } from '@/lib/severity';
 import { navigate } from '@/hooks/useHashRoute';
 import { useToast } from '@/lib/toast';
@@ -27,8 +27,15 @@ const TABS = [
   { key: 'summary', label: 'Summary' },
   { key: 'console', label: 'Console Logs' },
   { key: 'network', label: 'Network Failures' },
+  { key: 'security', label: 'Security' },
   { key: 'artifacts', label: 'Artifacts' },
 ];
+
+const SEV_STYLES = {
+  high: 'bg-danger-bg text-danger',
+  medium: 'bg-warning-bg text-warning',
+  low: 'bg-secondary text-muted-foreground',
+};
 
 function stepTimeOffsets(steps) {
   let cumulative = 0;
@@ -109,11 +116,7 @@ export function RunDetail({ id, data, startRun }) {
   }
 
   async function openDir() {
-    try {
-      await window.qaflow.runs.openDir(run.runId);
-    } catch (e) {
-      toast(`Failed to open run folder: ${e.message}`, 'error');
-    }
+    await openRunFolder(run.runId, toast);
   }
 
   function copyRunId() {
@@ -198,7 +201,16 @@ export function RunDetail({ id, data, startRun }) {
 
       <div className="flex gap-6 border-b border-border">
         {TABS.map((t) => {
-          const count = t.key === 'console' ? run.consoleErrors?.length : t.key === 'network' ? run.networkFailures?.length : t.key === 'artifacts' ? run.capturedMedia?.length : null;
+          const count =
+            t.key === 'console'
+              ? run.consoleErrors?.length
+              : t.key === 'network'
+                ? run.networkFailures?.length
+                : t.key === 'security'
+                  ? run.security?.summary?.total
+                  : t.key === 'artifacts'
+                    ? run.capturedMedia?.length
+                    : null;
           return (
             <button
               key={t.key}
@@ -457,6 +469,50 @@ export function RunDetail({ id, data, startRun }) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {tab === 'security' && (
+        <div className="flex flex-col gap-4">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <ShieldAlert className="h-4 w-4 text-muted-foreground" /> Security Audit
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Passive checks run automatically against the pages this test visited — response headers, cookie flags, transport, and mixed content. No
+              attacks are performed; these are hygiene findings to hand a developer.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
+              <span className="rounded-full bg-danger-bg px-2.5 py-1 text-danger">{run.security?.summary?.high || 0} High</span>
+              <span className="rounded-full bg-warning-bg px-2.5 py-1 text-warning">{run.security?.summary?.medium || 0} Medium</span>
+              <span className="rounded-full bg-secondary px-2.5 py-1 text-muted-foreground">{run.security?.summary?.low || 0} Low</span>
+            </div>
+          </div>
+
+          {(!run.security || run.security.findings.length === 0) ? (
+            <div className="rounded-xl border border-border bg-card p-8 text-center shadow-sm">
+              <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
+              <p className="mt-2 text-sm font-medium text-foreground">No security issues detected</p>
+              <p className="text-xs text-muted-foreground">
+                {run.security ? 'The pages this run visited passed every passive check.' : 'This run predates the security auditor — re-run to generate a report.'}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {run.security.findings.map((f) => (
+                <div key={f.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ${SEV_STYLES[f.severity]}`}>{f.severity}</span>
+                      <span className="text-sm font-semibold text-foreground">{f.title}</span>
+                    </div>
+                  </div>
+                  <p className="mt-1.5 text-sm text-muted-foreground">{f.detail}</p>
+                  {f.url && <p className="mt-1 truncate font-mono text-xs text-muted-foreground/70" title={f.url}>{f.url}</p>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

@@ -11,9 +11,22 @@ function invoke(channel) {
   return (...args) => ipcRenderer.invoke(channel, ...args);
 }
 
-const PUSH_CHANNELS = new Set(['recorder:step', 'run:progress', 'schedules:fired', 'browser:status', 'updates:status']);
+const PUSH_CHANNELS = new Set([
+  'recorder:step',
+  'run:progress',
+  'schedules:fired',
+  'browser:status',
+  'updates:status',
+  'auth:changed',
+  'repo:progress',
+]);
 
 contextBridge.exposeInMainWorld('qaflow', {
+  auth: {
+    status: invoke('auth:status'),
+    login: invoke('auth:login'),
+    logout: invoke('auth:logout'),
+  },
   projects: {
     list: invoke('projects:list'),
     get: invoke('projects:get'),
@@ -67,6 +80,27 @@ contextBridge.exposeInMainWorld('qaflow', {
     list: invoke('schedules:list'),
     save: invoke('schedules:save'),
     remove: invoke('schedules:remove'),
+  },
+  repo: {
+    info: invoke('repo:info'),
+    overview: invoke('repo:overview'),
+    clone: invoke('repo:clone'),
+    status: invoke('repo:status'),
+    log: invoke('repo:log'),
+    branches: invoke('repo:branches'),
+    checkout: invoke('repo:checkout'),
+    createBranch: invoke('repo:createBranch'),
+    stage: invoke('repo:stage'),
+    unstage: invoke('repo:unstage'),
+    discard: invoke('repo:discard'),
+    commit: invoke('repo:commit'),
+    pull: invoke('repo:pull'),
+    push: invoke('repo:push'),
+    fetch: invoke('repo:fetch'),
+    commitFiles: invoke('repo:commitFiles'),
+    diff: invoke('repo:diff'),
+    getAuth: invoke('repo:auth:get'),
+    saveAuth: invoke('repo:auth:save'),
   },
   app: {
     version: invoke('app:version'),

@@ -488,7 +488,7 @@ export function ReportBuilder({ id, data }) {
                 <FileSpreadsheet className="h-4 w-4" /> {busyAction === 'excel' ? 'Exporting…' : 'Export Excel'}
               </Button>
               <Button variant="outline" className="col-span-2" onClick={createTicket} disabled={busyAction === 'ticket'}>
-                <Send className="h-4 w-4" /> {busyAction === 'ticket' ? 'Creating…' : 'Create Jira Ticket'}
+                <Send className="h-4 w-4" /> {busyAction === 'ticket' ? 'Creating…' : 'Create Kanban Ticket'}
               </Button>
               <div className="col-span-2 flex">
                 <Button variant="outline" className="flex-1 rounded-r-none" onClick={sendToDavid} disabled={busyAction === 'david'}>
@@ -521,7 +521,7 @@ export function ReportBuilder({ id, data }) {
                   onClick={() => setPreviewTab('ticket')}
                   className={cn('rounded px-2.5 py-1 text-xs font-medium', previewTab === 'ticket' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}
                 >
-                  Jira Ticket
+                  Ticket
                 </button>
               </div>
             </div>

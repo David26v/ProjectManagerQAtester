@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require('playwright');
+const { analyzeSecurity } = require('./security.js');
 
 function slug(name) {
   return String(name)
@@ -130,6 +131,12 @@ async function runAttempt({
   const networkFailures = [];
   const steps = [];
   const capturedMedia = [];
+  // Passive security-audit collectors — populated by response/request
+  // listeners below purely from traffic the functional run already
+  // generates (no extra requests). Fed to analyzeSecurity() at the end.
+  const documentResponses = [];
+  const subresourceRequests = [];
+  let securityAudit = { findings: [], summary: { total: 0, high: 0, medium: 0, low: 0 } };
   let status = 'passed';
 
   // Tags every progress event with which attempt (1-based) emitted it, so a
@@ -152,6 +159,18 @@ async function runAttempt({
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push({ text: msg.text() });
     });
+    // Uncaught in-page exceptions never reach the console listener above —
+    // they surface only through 'pageerror'. Without this, a page that blows
+    // up in an event handler (but still renders) would pass silently.
+    page.on('pageerror', (err) => {
+      consoleErrors.push({ text: `Uncaught exception: ${err.message}` });
+    });
+    // A renderer crash (OOM, GPU fault) kills the tab mid-run; the current
+    // step's action will throw and fail the run, but the report should say
+    // WHY rather than leaving only a cryptic "target closed" step error.
+    page.on('crash', () => {
+      consoleErrors.push({ text: 'Page crashed (browser tab died mid-run)' });
+    });
     page.on('requestfailed', (r) => {
       networkFailures.push({ url: r.url(), failure: r.failure() && r.failure().errorText });
     });
@@ -159,7 +178,34 @@ async function runAttempt({
       if (res.status() >= 400) {
         consoleErrors.push({ text: `${res.status()} ${res.statusText()} - ${res.url()}` });
       }
+      // Capture main-frame document responses for the security audit — one
+      // per navigation, headers only (no bodies), capped so a long run
+      // doesn't accumulate unbounded.
+      const req = res.request();
+      if (req.isNavigationRequest() && req.frame() === page.mainFrame() && documentResponses.length < 50) {
+        documentResponses.push({ url: res.url(), status: res.status(), headers: res.headers() });
+      }
     });
+    page.on('request', (req) => {
+      if (subresourceRequests.length < 400) {
+        subresourceRequests.push({ url: req.url(), resourceType: req.resourceType() });
+      }
+    });
+
+    // Live-preview frames for the UI's floating run panel — a small JPEG of
+    // the page after each step, sent through onProgress. Only captured when
+    // someone is actually listening; runs from the API/CLI with no
+    // onProgress pay nothing. Transient UI data only — never persisted.
+    const captureFrame = emit
+      ? async () => {
+          try {
+            const buf = await page.screenshot({ type: 'jpeg', quality: 55 });
+            return `data:image/jpeg;base64,${buf.toString('base64')}`;
+          } catch {
+            return null;
+          }
+        }
+      : null;
 
     let failed = false;
 
@@ -196,7 +242,7 @@ async function runAttempt({
         await runStep(page, step, targetUrl);
         const durationMs = Date.now() - startedStep;
         steps.push({ name: step.name, status: 'passed', durationMs });
-        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'passed' });
+        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'passed', preview: await captureFrame() });
       } catch (e) {
         const durationMs = Date.now() - startedStep;
         const screenshotName = `${slug(step.name)}-${Date.now()}.png`;
@@ -209,13 +255,37 @@ async function runAttempt({
         }
 
         steps.push({ name: step.name, status: 'failed', error: e.message, screenshot: screenshotName, durationMs });
-        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'failed', error: e.message });
+        if (emit) emit({ type: 'step-end', index, name: step.name, status: 'failed', error: e.message, preview: await captureFrame() });
 
         failed = true;
         status = 'failed';
       }
     }
   } finally {
+    // Passive security audit — gather cookies and any password-form info
+    // from the live context BEFORE closing it, then analyze everything the
+    // run already observed. Best-effort: an audit failure must never fail
+    // the functional run.
+    if (context) {
+      try {
+        const cookies = await context.cookies();
+        let forms = [];
+        const livePage = context.pages()[0];
+        if (livePage) {
+          forms = await livePage.evaluate(() =>
+            Array.from(document.forms).map((f) => ({
+              pageUrl: location.href,
+              action: f.action || '',
+              hasPassword: Boolean(f.querySelector('input[type="password"]')),
+            }))
+          );
+        }
+        securityAudit = analyzeSecurity({ documentResponses, requests: subresourceRequests, cookies, forms });
+      } catch {
+        // audit is advisory only
+      }
+    }
+
     let videoSourcePath = null;
     if (context) {
       const page = context.pages()[0];
@@ -260,6 +330,7 @@ async function runAttempt({
     steps,
     consoleErrors,
     networkFailures,
+    security: securityAudit,
     videoPath: videoMedia ? videoMedia.path : null,
     capturedMedia,
     reportSelection: null,

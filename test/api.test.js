@@ -38,7 +38,7 @@ function canned({ suite, project, environment, status = 'passed' }) {
   };
 }
 
-async function setup(t, { runSuiteFn } = {}) {
+async function setup(t, { runSuiteFn, isSignedIn } = {}) {
   const store = createStore(tmpBaseDir());
 
   const project = store.saveProject({ name: 'Acme', key: 'ACME', baseUrl: 'https://acme.test' });
@@ -70,7 +70,7 @@ async function setup(t, { runSuiteFn } = {}) {
     return s.saveRun(report);
   };
 
-  const api = createApi({ store, runSuiteFn: runSuiteFn || defaultRunSuiteFn });
+  const api = createApi({ store, runSuiteFn: runSuiteFn || defaultRunSuiteFn, isSignedIn });
   const port = await api.listen(0);
   t.after(() => api.close());
 
@@ -304,6 +304,29 @@ test('api.listen binds to 127.0.0.1 only', async (t) => {
   // Verify by hitting it on 127.0.0.1 successfully (bind proven by successful connect below).
   const res = await fetch(`http://127.0.0.1:${port}/projects`);
   assert.equal(res.status, 200);
+});
+
+test('isSignedIn gate: 503s every route while logged out, works normally once signed in', async (t) => {
+  let signedIn = false;
+  const { project, port } = await setup(t, { isSignedIn: () => signedIn });
+
+  const loggedOutRes = await fetch(`http://127.0.0.1:${port}/projects`);
+  assert.equal(loggedOutRes.status, 503);
+  const loggedOutBody = await loggedOutRes.json();
+  assert.equal(loggedOutBody.error, 'Not signed in');
+
+  signedIn = true;
+  const loggedInRes = await fetch(`http://127.0.0.1:${port}/projects`);
+  assert.equal(loggedInRes.status, 200);
+  const loggedInBody = await loggedInRes.json();
+  assert.equal(loggedInBody[0].id, project.id);
+
+  // A later logout (session revoked without restarting the server) must
+  // re-gate every route again — this is the only enforcement point since
+  // the server itself is never torn down on logout (see main.js).
+  signedIn = false;
+  const loggedOutAgainRes = await fetch(`http://127.0.0.1:${port}/projects`);
+  assert.equal(loggedOutAgainRes.status, 503);
 });
 
 test('CLI: qaflow status --project <name> prints suite name', async (t) => {
